@@ -1,0 +1,23 @@
+@layer components {
+    /* Default Form Control */
+    .form-control {
+        @apply transition duration-200 ease-in-out w-full text-sm border-slate-200 shadow-sm rounded-md placeholder:text-slate-400/90 focus:ring-4 focus:ring-blue-500 focus:ring-opacity-20 focus:border-blue-500 focus:border-opacity-40;
+        &:disabled,
+        &[readonly] {
+            @apply bg-slate-100 cursor-not-allowed;
+        }
+    }
+
+    /* Default Sizes */
+    .form-control-sm {
+        @apply text-xs py-1.5 px-2;
+    }
+    .form-control-lg {
+        @apply text-lg py-1.5 px-4;
+    }
+
+    /* Form Control Rounded */
+    .form-control-rounded {
+        @apply rounded-full;
+    }
+}

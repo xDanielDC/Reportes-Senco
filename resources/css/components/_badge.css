@@ -1,0 +1,35 @@
+.badge {
+    @apply text-xs font-semibold inline-block py-1 px-2 rounded uppercase last:mr-0 mr-1 mb-1
+}
+
+.badge-sm {
+    @apply text-xs inline-block py-0 px-2 rounded uppercase mt-0.5 last:mr-0 mr-1
+}
+
+.badge-rounded {
+    @apply rounded-full
+}
+
+.badge-danger {
+    @apply bg-[#DB4437] text-white
+}
+
+.badge-success {
+    @apply bg-[#0F9D58] text-white
+}
+
+.badge-primary {
+    @apply bg-[#4285F4] text-white
+}
+
+.badge-purple {
+    @apply bg-purple-200 text-purple-600
+}
+
+.badge-pink {
+    @apply bg-pink-200 text-pink-600
+}
+
+.badge-warning {
+    @apply bg-[#F4B400] text-white
+}

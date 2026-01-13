@@ -1,0 +1,13 @@
+.dataTables_wrapper .dataTables_length label {
+    @apply grid grid-cols-3 gap-1 items-center
+}
+.dataTables_wrapper .dataTables_length select {
+    @apply form-select
+}
+.dataTables_wrapper .dataTables_filter label{
+    @apply grid grid-cols-2 items-center
+}
+.dataTables_wrapper .dataTables_filter input {
+    @apply form-control
+}
+

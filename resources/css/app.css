@@ -1,0 +1,11 @@
+@import "_tailwind.css";
+@import "components/_litepicker.css";
+@import "components/_form-select.css";
+@import "components/_form-control.css";
+@import "components/_form-check.css";
+@import "components/_tom-select.css";
+@import "components/_table.css";
+@import "components/_datatable.css";
+@import "components/_box.css";
+@import "components/_badge.css";
+@import "components/_swal_custom.css";
