@@ -109,27 +109,6 @@
                                             </ul>
                                         </template>
                                     </div>
-
-                                    <div>
-                                        <InputLabel value="Confirmar Contraseña"/>
-                                        <TextInput
-                                            v-model="form.confirm_password"
-                                            type="password"
-                                            class="mt-1 block w-full"
-                                            :class="{'border-red-500': v$.form.confirm_password.$error}"
-                                            required
-                                            autocomplete="off"
-                                        />
-                                        <template v-if="v$.form.confirm_password.$error">
-                                            <ul class="mt-1">
-                                                <li class="text-red-500"
-                                                    v-for="(error, index) of v$.form.confirm_password.$errors"
-                                                    :key="index">
-                                                    {{ error.$message }}
-                                                </li>
-                                            </ul>
-                                        </template>
-                                    </div>
                                 </template>
 
                                 <fieldset class="border rounded-lg p-4 col-span-3">
@@ -387,7 +366,6 @@ export default {
                 },
                 confirm_password: {
                     requiredIf: requiredIf(this.form.change_password),
-                    sameAs: sameAs(this.form.password),
                     minLength: minLength(8)
                 },
                 reports: {
@@ -415,7 +393,6 @@ export default {
                 email: this.user.email,
                 change_password: false,
                 password: '',
-                confirm_password: '',
                 reports: [],
                 permissions: this.user.permissions.map(row => row.name),
                 roles: this.user.roles.map(row => row.name),

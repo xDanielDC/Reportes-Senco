@@ -62,7 +62,7 @@ const logout = () => {
                                     Reportes
                                 </NavLink>
 
-                                <div class="relative inline-flex items-center px-1 pt-1 border-b-2 border-transparent"
+                                <!-- <div class="relative inline-flex items-center px-1 pt-1 border-b-2 border-transparent"
                                      v-permission:any="'design.request|design.priority|design.state|design.time-state'">
                                     <Dropdown align="left" width="60">
                                         <template #trigger>
@@ -97,7 +97,7 @@ const logout = () => {
                                             </div>
                                         </template>
                                     </Dropdown>
-                                </div>
+                                </div> -->
 
                                 <div class="relative inline-flex items-center px-1 pt-1 border-b-2 border-transparent"
                                      v-permission:any="'user.create|user.edit|user.destroy|role.create|role.edit|role.destroy|permission.create|permission.edit|permission.destroy|import-report|report.filter.index|report.filter.edit|report.filter.create|report.filter.destroy'">

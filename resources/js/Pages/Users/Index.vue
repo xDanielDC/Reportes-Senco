@@ -167,26 +167,6 @@
                             </ul>
                         </template>
                     </div>
-
-                    <div class="mt-4">
-                        <InputLabel value="Confirmar Contraseña"/>
-                        <TextInput
-                            v-model="modal.form.confirm_password"
-                            :class="{'border-red-500': v$.form.confirm_password.$error}"
-                            autocomplete="off"
-                            class="mt-1 block w-full"
-                            required
-                            type="password"
-                        />
-                        <template v-if="v$.form.confirm_password.$error">
-                            <ul class="mt-1">
-                                <li v-for="(error, index) of v$.form.confirm_password.$errors"
-                                    :key="index" class="text-red-500">
-                                    {{ error.$message }}
-                                </li>
-                            </ul>
-                        </template>
-                    </div>
                 </template>
 
                 <div class="mt-4">
@@ -273,7 +253,7 @@ import SecondaryButton from '@/Components/SecondaryButton.vue';
 import DialogModal from '@/Components/DialogModal.vue';
 import TextInput from "@/Components/TextInput.vue";
 import {useVuelidate} from '@vuelidate/core'
-import {email, minLength, required, requiredIf, sameAs} from '@/Utils/i18n-validators.js'
+import {email, minLength, required, requiredIf} from '@/Utils/i18n-validators.js'
 import InputLabel from "@/Components/InputLabel.vue";
 import Checkbox from "@/Components/Checkbox.vue";
 import {FontAwesomeIcon} from "@fortawesome/vue-fontawesome";
@@ -344,7 +324,6 @@ const modal = reactive({
         email: '',
         change_password: false,
         password: '',
-        confirm_password: '',
         reports: [],
         permissions: [],
         roles: []
@@ -368,11 +347,6 @@ const rules = {
         },
         password: {
             requiredIf: requiredIf(modal.form.change_password || !modal.editMode),
-            minLength: minLength(8)
-        },
-        confirm_password: {
-            requiredIf: requiredIf(modal.form.change_password || !modal.editMode),
-            sameAs: sameAs(modal.form.password),
             minLength: minLength(8)
         },
         reports: {
@@ -407,7 +381,6 @@ const closeModal = () => {
         email: '',
         change_password: false,
         password: '',
-        confirm_password: '',
         reports: [],
         permissions: [],
         roles: []

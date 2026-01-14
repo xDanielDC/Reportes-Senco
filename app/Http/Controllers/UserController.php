@@ -42,7 +42,7 @@ class UserController extends Controller
     {
         DB::beginTransaction();
         try {
-            $user = new User($request->except('reports', 'permissions', 'roles', 'password', 'confirm_password'));
+            $user = new User($request->except('reports', 'permissions', 'roles', 'password'));
             $user->password = bcrypt($request->password);
             $user->save();
             $user->reports()->sync($request->reports);
