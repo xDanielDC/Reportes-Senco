@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Actions\Fortify\AuthenticateUserHybrid;
 use App\Actions\Fortify\CreateNewUser;
 use App\Actions\Fortify\ResetUserPassword;
 use App\Actions\Fortify\UpdateUserPassword;
@@ -15,17 +16,6 @@ use Laravel\Fortify\Fortify;
 
 class FortifyServiceProvider extends ServiceProvider
 {
-    /**
-     * Register any application services.
-     */
-    public function register(): void
-    {
-        //
-    }
-
-    /**
-     * Bootstrap any application services.
-     */
     public function boot(): void
     {
         Fortify::createUsersUsing(CreateNewUser::class);
@@ -33,9 +23,13 @@ class FortifyServiceProvider extends ServiceProvider
         Fortify::updateUserPasswordsUsing(UpdateUserPassword::class);
         Fortify::resetUserPasswordsUsing(ResetUserPassword::class);
 
+        // ← AGREGAR AUTENTICACIÓN HÍBRIDA
+        Fortify::authenticateUsing(function (Request $request) {
+            return app(AuthenticateUserHybrid::class)->authenticate($request);
+        });
+
         RateLimiter::for('login', function (Request $request) {
             $throttleKey = Str::transliterate(Str::lower($request->input(Fortify::username())).'|'.$request->ip());
-
             return Limit::perMinute(5)->by($throttleKey);
         });
 

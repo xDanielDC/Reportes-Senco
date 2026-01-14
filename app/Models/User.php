@@ -12,6 +12,8 @@ use Laravel\Fortify\TwoFactorAuthenticatable;
 use Laravel\Jetstream\HasProfilePhoto;
 use Laravel\Sanctum\HasApiTokens;
 use Spatie\Permission\Traits\HasRoles;
+use LdapRecord\Laravel\Auth\LdapAuthenticatable;
+use LdapRecord\Laravel\Auth\AuthenticatesWithLdap;
 
 class User extends Authenticatable
 {
@@ -21,6 +23,7 @@ class User extends Authenticatable
     use Notifiable;
     use TwoFactorAuthenticatable;
     use HasRoles;
+    use AuthenticatesWithLdap;
 
     /**
      * guard_name
@@ -40,6 +43,9 @@ class User extends Authenticatable
         'email',
         'password',
         'type',
+        'guid',           
+        'domain',         
+        'is_ldap_user',   
     ];
 
     /**
@@ -63,6 +69,7 @@ class User extends Authenticatable
         'email_verified_at' => 'datetime',
         'created_at' => 'datetime:Y-m-d h:i:s A',
         'updated_at' => 'datetime:Y-m-d h:i:s A',
+        'is_ldap_user' => 'boolean',
     ];
 
     /**
@@ -75,6 +82,11 @@ class User extends Authenticatable
         'role_names',
         'permission_names',
     ];
+
+    public function isLdapUser(): bool
+    {
+        return $this->is_ldap_user && !empty($this->guid);
+    }
 
     public function reports(): BelongsToMany
     {

@@ -60,16 +60,25 @@ return [
     */
 
     'providers' => [
-        'users' => [
-            'driver' => 'eloquent',
-            'model' => App\Models\User::class,
-        ],
-
-        // 'users' => [
-        //     'driver' => 'database',
-        //     'table' => 'users',
-        // ],
+    'users' => [
+        'driver' => 'eloquent',
+        'model' => App\Models\User::class,
     ],
+
+    'ldap' => [
+        'driver' => 'ldap',
+        'model' => App\Ldap\User::class,
+        'rules' => [],
+        'database' => [
+            'model' => App\Models\User::class,
+            'sync_passwords' => false,
+            'sync_attributes' => [
+                'name' => 'cn',
+                'email' => 'mail',
+            ],
+        ],
+    ],
+],
 
     /*
     |--------------------------------------------------------------------------
