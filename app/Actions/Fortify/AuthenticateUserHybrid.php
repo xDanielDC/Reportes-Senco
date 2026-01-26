@@ -21,8 +21,9 @@ class AuthenticateUserHybrid
         $username = $credentials['username'];
         $password = $credentials['password'];
 
-        // 1. Buscar usuario en base de datos local
-        $user = User::where('username', $username)
+        // 1. Buscar usuario en base de datos local (MySQL)
+        $user = User::on('mysql')  // ← AGREGAR ESTO
+                    ->where('username', $username)
                     ->orWhere('email', $username)
                     ->first();
 
@@ -81,12 +82,16 @@ class AuthenticateUserHybrid
     {
         $guid = $ldapUser->getConvertedGuid();
         
-        // Buscar por GUID primero
-        $user = User::where('guid', $guid)->first();
+        // Buscar por GUID primero (en MySQL)
+        $user = User::on('mysql')  // ← AGREGAR ESTO
+                    ->where('guid', $guid)
+                    ->first();
         
         if (!$user) {
-            // Buscar por username
-            $user = User::where('username', $ldapUser->getFirstAttribute('samaccountname'))->first();
+            // Buscar por username (en MySQL)
+            $user = User::on('mysql')  // ← AGREGAR ESTO
+                        ->where('username', $ldapUser->getFirstAttribute('samaccountname'))
+                        ->first();
         }
 
         $userData = [

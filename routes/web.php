@@ -13,6 +13,8 @@ use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SupplierDeliveryController;
 use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\ServiceOrderController;
+use App\Http\Controllers\ListaPreciosController;
 
 /*
 |--------------------------------------------------------------------------
@@ -24,6 +26,9 @@ use Illuminate\Support\Facades\Route;
 | contains the "web" middleware group. Now create something great!
 |
 */
+
+// Agregar esto TEMPORALMENTE en routes/web.php
+
 
 Route::get('/', function () {
     return redirect()->route('login');
@@ -183,3 +188,33 @@ Route::prefix('guest')->group(function () {
     });
 });
 
+Route::middleware(['auth'])->prefix('service-orders')->name('service-orders.')->group(function () {
+    Route::get('/', [ServiceOrderController::class, 'index'])->name('index');
+    Route::get('/create', [ServiceOrderController::class, 'create'])->name('create');
+    Route::get('/{id}', [ServiceOrderController::class, 'show'])->name('show');
+    // Las acciones de guardar/editar/eliminar se manejan desde el frontend con Pinia por ahora
+});
+
+Route::middleware(['auth', 'permission:ver-lista-precios'])->prefix('lista-precios')->group(function () {
+    
+    Route::get('/', [ListaPreciosController::class, 'index'])
+        ->name('lista-precios.index');
+    
+    Route::get('/search', [ListaPreciosController::class, 'search'])
+        ->name('lista-precios.search');
+    
+    Route::get('/producto/{codigo}', [ListaPreciosController::class, 'show'])
+        ->name('lista-precios.show');
+    
+    Route::get('/relacionados/{codigo}', [ListaPreciosController::class, 'relacionados'])
+        ->name('lista-precios.relacionados');
+    
+    Route::get('/export', [ListaPreciosController::class, 'export'])
+        ->name('lista-precios.export');
+    
+    Route::get('/api/filtros', [ListaPreciosController::class, 'filtros'])
+        ->name('lista-precios.filtros');
+    
+    Route::get('/api/estadisticas', [ListaPreciosController::class, 'estadisticas'])
+        ->name('lista-precios.estadisticas');
+});

@@ -15,6 +15,8 @@ use Spatie\Permission\Traits\HasRoles;
 use LdapRecord\Laravel\Auth\LdapAuthenticatable;
 use LdapRecord\Laravel\Auth\AuthenticatesWithLdap;
 
+
+
 class User extends Authenticatable
 {
     use HasApiTokens;
@@ -31,6 +33,7 @@ class User extends Authenticatable
      * @var string
      */
     protected string $guard_name = 'sanctum';
+    protected $connection = 'mysql';
 
     /**
      * The attributes that are mass assignable.
