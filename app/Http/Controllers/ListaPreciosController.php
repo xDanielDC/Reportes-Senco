@@ -7,6 +7,8 @@ use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use Barryvdh\DomPDF\Facade\Pdf;
+use App\Models\ListaPrecio; 
 
 class ListaPreciosController extends Controller
 {
@@ -184,4 +186,42 @@ class ListaPreciosController extends Controller
             'grupos' => $this->service->getGruposByTipoClase($tipo, $clase),
         ]);
     }
+
+    /**
+     * Exportar lista de precios a PDF
+     *
+     * @param Request $request
+     * @return \Illuminate\Http\Response
+     */
+    public function exportPdf(Request $request)
+{
+    $query = ListaPrecio::query();
+
+    if ($request->search) {
+        $query->where('Descripcion', 'like', "%{$request->search}%");
+    }
+
+    if ($request->tipo) {
+        $query->where('Tipo', $request->tipo);
+    }
+
+    if ($request->clase) {
+        $query->where('Clase', $request->clase);
+    }
+
+    if ($request->grupo) {
+        $query->where('Grupo', $request->grupo);
+    }
+
+    if ($request->solo_con_stock) {
+        $query->where('Inventario', '>', 0);
+    }
+
+    $productos = $query->get();
+
+    $pdf = Pdf::loadView('pdf.lista-precios', compact('productos'))
+        ->setPaper('a4', 'landscape');
+
+    return $pdf->stream('lista-precios.pdf');
+}
 }

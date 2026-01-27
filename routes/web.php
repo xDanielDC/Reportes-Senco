@@ -220,4 +220,9 @@ Route::middleware(['auth', 'permission:ver-lista-precios'])->prefix('lista-preci
 
     Route::get('/api/filtros-dinamicos', [ListaPreciosController::class, 'filtrosDinamicos'])
         ->name('lista-precios.filtros-dinamicos');   
+        
+    Route::get('/lista-precios/pdf', [ListaPreciosController::class, 'exportPdf'])
+    ->name('lista-precios.pdf');
 });
+
+
