@@ -206,4 +206,46 @@ class ListaPreciosRepository
             ->limit($limit)
             ->get();
     }
+
+    /**
+     * Obtener clases filtradas por tipo
+     */
+    public function getClasesByTipo(?string $tipo): array
+{
+    if (!$tipo) {
+        return $this->getClases();
+    }
+
+    return $this->model
+        ->where('Tipo', $tipo)
+        ->select('Clase')
+        ->distinct()
+        ->orderBy('Clase')
+        ->pluck('Clase')
+        ->toArray();
+}
+
+/**
+ * Obtener grupos filtrados por tipo y clase
+ */
+public function getGruposByTipoClase(?string $tipo, ?string $clase): array
+{
+    $query = $this->model->newQuery();
+
+    if ($tipo) {
+        $query->where('Tipo', $tipo);
+    }
+
+    if ($clase) {
+        $query->where('Clase', $clase);
+    }
+
+    return $query
+        ->select('Grupo')
+        ->distinct()
+        ->orderBy('Grupo')
+        ->pluck('Grupo')
+        ->toArray();
+}
+
 }

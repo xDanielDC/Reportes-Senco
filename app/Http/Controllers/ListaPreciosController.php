@@ -167,4 +167,21 @@ class ListaPreciosController extends Controller
             'timestamp' => now()->toIso8601String(),
         ]);
     }
+
+    /**
+     * Obtener filtros dinámicos (clases y grupos según tipo/clase)
+     *
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function filtrosDinamicos(Request $request)
+    {
+        $tipo = $request->get('tipo');
+        $clase = $request->get('clase');
+
+        return response()->json([
+            'clases' => $this->service->getClasesByTipo($tipo),
+            'grupos' => $this->service->getGruposByTipoClase($tipo, $clase),
+        ]);
+    }
 }

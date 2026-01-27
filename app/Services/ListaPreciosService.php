@@ -245,4 +245,27 @@ class ListaPreciosService
             ->where('Cod Max', '!=', $codigo)
             ->take($limit);
     }
+
+    /**
+     * Obtener clases filtradas por tipo
+     *
+     * @param string|null $tipo
+     * @return array
+     */
+    public function getClasesByTipo(?string $tipo): array
+    {
+        return $this->repository->getClasesByTipo($tipo);
+    }
+
+    /**
+     * Obtener grupos filtrados por tipo y clase
+     *
+     * @param string|null $tipo
+     * @param string|null $clase
+     * @return array
+     */
+    public function getGruposByTipoClase(?string $tipo, ?string $clase): array
+    {
+        return $this->repository->getGruposByTipoClase($tipo, $clase);
+    }
 }

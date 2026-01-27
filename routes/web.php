@@ -217,4 +217,7 @@ Route::middleware(['auth', 'permission:ver-lista-precios'])->prefix('lista-preci
     
     Route::get('/api/estadisticas', [ListaPreciosController::class, 'estadisticas'])
         ->name('lista-precios.estadisticas');
+
+    Route::get('/api/filtros-dinamicos', [ListaPreciosController::class, 'filtrosDinamicos'])
+        ->name('lista-precios.filtros-dinamicos');   
 });
