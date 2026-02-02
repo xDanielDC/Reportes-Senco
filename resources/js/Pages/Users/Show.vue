@@ -80,6 +80,25 @@
                                         </ul>
                                     </template>
                                 </div>
+                                <div>
+                                    <InputLabel value="Código de vendedor (opcional)"/>
+                                    <TextInput
+                                        v-model="form.codigo_vendedor"
+                                        type="text"
+                                        class="mt-1 block w-full"
+                                        autocomplete="off"
+                                    />
+                                </div>
+                                
+                                <div>
+                                    <InputLabel value="Cédula (opcional)"/>
+                                    <TextInput
+                                        v-model="form.cedula"
+                                        type="text"
+                                        class="mt-1 block w-full"
+                                        autocomplete="off"
+                                    />
+                                </div>
 
                                 <div class="block">
                                     <label class="flex items-center">
@@ -411,6 +430,8 @@ export default {
                 name: this.user.name,
                 username: this.user.username,
                 email: this.user.email,
+                codigo_vendedor: this.user.codigo_vendedor ?? null,
+                cedula: this.user.cedula ?? null,
                 change_password: false,
                 password: '',
                 reports: [],

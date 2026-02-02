@@ -139,6 +139,25 @@
                         </ul>
                     </template>
                 </div>
+                <div class="mt-4">
+                    <InputLabel value="Código de vendedor (opcional)"/>
+                    <TextInput
+                        v-model="modal.form.codigo_vendedor"
+                        type="text"
+                        class="mt-1 block w-full"
+                        autocomplete="off"
+                    />
+                </div>
+
+                <div class="mt-4">
+                    <InputLabel value="Cédula (opcional)"/>
+                    <TextInput
+                        v-model="modal.form.cedula"
+                        type="text"
+                        class="mt-1 block w-full"
+                        autocomplete="off"
+                    />
+                </div>
 
                 <div v-if="modal.editMode" class="block mt-4">
                     <label class="flex items-center">
@@ -288,8 +307,9 @@ const table = reactive({
         'name',
         'username',
         'email',
+        'codigo_vendedor',
+        'cedula',
         'roles',
-        'permissions',
         'reports',
         'created_at',
         'updated_at'
@@ -301,7 +321,8 @@ const table = reactive({
             username: 'USUARIO',
             email: 'CORREO ELECTRÓNICO',
             roles: 'ROLES',
-            permissions: 'PERMISOS',
+            codigo_vendedor: 'Cod Vendedor',
+            cedula: 'CÉDULA',
             reports: 'REPORTES',
             created_at: 'CREADO EL',
             updated_at: 'ACTUALIZADO EL'
@@ -322,6 +343,8 @@ const modal = reactive({
         name: '',
         username: '',
         email: '',
+        codigo_vendedor: null,
+        cedula: null,
         change_password: false,
         password: '',
         reports: [],
@@ -379,6 +402,8 @@ const closeModal = () => {
         name: '',
         username: '',
         email: '',
+        codigo_vendedor: null,
+        cedula: null,
         change_password: false,
         password: '',
         reports: [],
