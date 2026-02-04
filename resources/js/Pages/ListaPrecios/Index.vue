@@ -5,6 +5,7 @@ import { debounce } from 'lodash';
 import SearchBar from './Partials/SearchBar.vue';
 import ProductTable from './Partials/ProductTable.vue';
 import ProductFilters from './Partials/ProductFilters.vue';
+import AppLayout from '@/Layouts/AppLayout.vue';
 
 // Props recibidos desde el controller
 const props = defineProps({
@@ -131,6 +132,7 @@ watch(perPage, () => {
 </script>
 
 <template>
+    <AppLayout title="Lista de Precios">
     <div class="min-h-screen bg-gray-50 py-8">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <!-- Header -->
@@ -280,4 +282,5 @@ watch(perPage, () => {
         </div>
         
     </div>
+    </AppLayout>
 </template>

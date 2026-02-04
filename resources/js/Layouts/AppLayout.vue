@@ -61,11 +61,11 @@ const logout = () => {
                                     <font-awesome-icon icon="chart-simple" class="mr-2"/>
                                     Reportes
                                 </NavLink>
-                                <NavLink :href="route('service-orders.index')" 
+                                <!-- <NavLink :href="route('service-orders.index')" 
                                          :active="route().current('service-orders.*')">
                                     <font-awesome-icon icon="clipboard-list" class="mr-2" />
                                     Órdenes de Servicio
-                                </NavLink>
+                                </NavLink> -->
 
                                 <template v-if="$page.props.auth.user.permissions?.includes('ver-lista-precios')">
                                     <NavLink :href="route('lista-precios.index')" :active="route().current('lista-precios.*')">
@@ -75,6 +75,14 @@ const logout = () => {
                                                       d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
                                             </svg>
                                             Lista de Precios
+                                        </div>
+                                    </NavLink>
+                                </template>
+                                <template v-if="$page.props.auth.user.permissions?.some(p => p.startsWith('rutas-tecnicas.'))">
+                                    <NavLink :href="route('rutas-tecnicas.create')" :active="route().current('rutas-tecnicas.*')">
+                                        <div class="flex items-center">
+                                            <font-awesome-icon icon="fa-solid fa-screwdriver-wrench" class="mr-2"/>
+                                            Rutas Técnicas
                                         </div>
                                     </NavLink>
                                 </template>
@@ -305,6 +313,7 @@ const logout = () => {
                 <div :class="{'block': showingNavigationDropdown, 'hidden': ! showingNavigationDropdown}" class="sm:hidden">
                     <div class="pt-2 pb-3 space-y-1">
                         <ResponsiveNavLink :href="route('dashboard')" :active="route().current('dashboard')">
+                            <font-awesome-icon icon="fa-solid fa-house" class="mr-2"/>
                             Dashboard
                         </ResponsiveNavLink>
 
@@ -314,10 +323,26 @@ const logout = () => {
                             <font-awesome-icon icon="chart-simple" class="mr-2"/>
                             Reportes
                         </ResponsiveNavLink>
-                         <ResponsiveNavLink :href="route('service-orders.index')" 
+                         <!-- <ResponsiveNavLink :href="route('service-orders.index')" 
                            :active="route().current('service-orders.*')">
                             <font-awesome-icon icon="clipboard-list" class="mr-2" />
+                        </ResponsiveNavLink> -->
+                        <ResponsiveNavLink :href="route('lista-precios.index')"
+                                           :active="route().current('lista-precios.*')"
+                                           v-permission:any="'ver-lista-precios'">
+                            <font-awesome-icon icon="clipboard-list" class="mr-2"/>
+                            Lista de Precios
                         </ResponsiveNavLink>
+
+                        <template v-if="$page.props.auth.user.permissions?.some(p => p.startsWith('rutas-tecnicas.'))">
+    <ResponsiveNavLink
+        :href="route('rutas-tecnicas.create')"
+        :active="route().current('rutas-tecnicas.*')"
+    >
+        <font-awesome-icon icon="fa-solid fa-screwdriver-wrench" class="mr-2"/>
+        Rutas Técnicas
+    </ResponsiveNavLink>
+</template>
 
                         <ResponsiveNavLink :href="route('roles.index')"
                                            :active="route().current('roles.index')"

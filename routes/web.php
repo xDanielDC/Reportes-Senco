@@ -15,6 +15,7 @@ use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\ServiceOrderController;
 use App\Http\Controllers\ListaPreciosController;
+use App\Http\Controllers\RutaTecnicaController;
 
 /*
 |--------------------------------------------------------------------------
@@ -173,21 +174,7 @@ Route::middleware(['auth:sanctum', config('jetstream.auth_session'), 'verified']
         Route::delete('task/{request_id}/{id}', [DesignTaskController::class, 'destroy'])->name('task.destroy');
     });
 
-    Route::prefix('supplier-delivery')->group(function () {
-        Route::get('', [SupplierDeliveryController::class, 'index'])->name('supplier-delivery.index');
-        Route::post('update', [SupplierDeliveryController::class, 'update'])->name('supplier-delivery.update');
-        Route::post('send-mail', [SupplierDeliveryController::class, 'sendMail'])->name('supplier-delivery.send-mail');
-
-    });
-
 });
-
-Route::prefix('guest')->group(function () {
-    Route::prefix('supplier-delivery')->group(function () {
-        Route::get('{hash}/show', [SupplierDeliveryController::class, 'show'])->name('supplier-delivery.show');
-    });
-});
-
 Route::middleware(['auth'])->prefix('service-orders')->name('service-orders.')->group(function () {
     Route::get('/', [ServiceOrderController::class, 'index'])->name('index');
     Route::get('/create', [ServiceOrderController::class, 'create'])->name('create');
@@ -226,3 +213,16 @@ Route::middleware(['auth', 'permission:ver-lista-precios'])->prefix('lista-preci
 });
 
 
+
+Route::middleware(['auth:sanctum'])->prefix('rutas-tecnicas')->name('rutas-tecnicas.')->group(function () {
+    // Páginas principales
+    Route::get('/', [RutaTecnicaController::class, 'index'])->name('index');
+    Route::get('/create', [RutaTecnicaController::class, 'create'])->name('create');
+    Route::post('/', [RutaTecnicaController::class, 'store'])->name('store');
+    Route::get('/{id}', [RutaTecnicaController::class, 'show'])->name('show');
+    Route::delete('/{id}', [RutaTecnicaController::class, 'destroy'])->name('destroy');
+    
+    // API endpoints para búsquedas
+    Route::get('/api/clientes/buscar', [RutaTecnicaController::class, 'buscarClientes'])->name('buscar-clientes');
+    Route::get('/api/clientes/{clienteId}/direcciones', [RutaTecnicaController::class, 'obtenerDirecciones'])->name('direcciones');
+});

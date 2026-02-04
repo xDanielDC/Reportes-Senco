@@ -42,12 +42,19 @@ class UserController extends Controller
     {
         DB::beginTransaction();
         try {
-            $user = new User($request->except('reports', 'permissions', 'roles', 'password'));
-            $user->password = bcrypt($request->password);
-            $user->save();
+            $user = User::create([
+                'type' => $request->type,
+                'name' => $request->name,
+                'username' => $request->username,
+                'email' => $request->email,
+                'cedula' => $request->cedula ?: null,
+                'codigo_vendedor' => $request->codigo_vendedor ?: null,
+                'password' => bcrypt($request->password),
+        ]);
             $user->reports()->sync($request->reports);
             $user->syncPermissions($request->permissions);
             $user->syncRoles($request->roles);
+            
 
             DB::commit();
 
@@ -75,6 +82,8 @@ class UserController extends Controller
                 'name' => $request->name,
                 'username' => $request->username,
                 'email' => $request->email,
+                'cedula' => $request->cedula ?: null,
+                'codigo_vendedor' => $request->codigo_vendedor ?: null,
             ]);
 
             if ($request->change_password) {

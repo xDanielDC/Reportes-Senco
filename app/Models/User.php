@@ -48,7 +48,9 @@ class User extends Authenticatable
         'type',
         'guid',           
         'domain',         
-        'is_ldap_user',   
+        'is_ldap_user',
+        'cedula',
+        'codigo_vendedor',   
     ];
 
     /**

@@ -55,18 +55,29 @@ return [
         ],
 
         'sqlsrv' => [
-    'driver' => 'sqlsrv',
-    'host' => env('SQLSRV_HOST'),
-    'port' => env('SQLSRV_PORT'),
-    'database' => env('SQLSRV_DATABASE'),
-    'username' => env('SQLSRV_USERNAME'),
-    'password' => env('SQLSRV_PASSWORD'),
-    'charset' => 'utf8',
-    'prefix' => '',
-    'prefix_indexes' => true,
-    'encrypt' => env('SQLSRV_ENCRYPT', 'true'),
-    'trust_server_certificate' => env('SQLSRV_TRUST_SERVER_CERTIFICATE', true),
-],
+            'driver' => 'sqlsrv',
+            'host' => env('SQLSRV_HOST'),
+            'port' => env('SQLSRV_PORT'),
+            'database' => env('SQLSRV_DATABASE'),
+            'username' => env('SQLSRV_USERNAME'),
+            'password' => env('SQLSRV_PASSWORD'),
+            'charset' => 'utf8',
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'encrypt' => env('SQLSRV_ENCRYPT', 'true'),
+            'trust_server_certificate' => env('SQLSRV_TRUST_SERVER_CERTIFICATE', true),
+        ],
+
+        'senco360' => [
+            'driver' => 'sqlsrv',
+            'host' => env('SENCO360_HOST'),
+            'port' => env('SENCO360_PORT'),
+            'database' => env('SENCO360_DATABASE'),
+            'username' => env('SENCO360_USERNAME'),
+            'password' => env('SENCO360_PASSWORD'),
+            'encrypt' => env('SENCO360_ENCRYPT', true),
+            'trust_server_certificate' => env('SENCO360_TRUST_SERVER_CERTIFICATE', true),
+        ],
 
 
 
