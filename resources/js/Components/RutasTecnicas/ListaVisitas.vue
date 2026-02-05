@@ -30,11 +30,23 @@ const asesoresUnicos = computed(() => {
 
 const formatearFecha = (fecha) => {
     const date = new Date(fecha + 'T00:00:00');
-    return date.toLocaleDateString('es-ES', {
+    
+    // Opción 1: Día corto (Lun, Mar, Mié, etc.)
+    const diaSemana = date.toLocaleDateString('es-ES', { weekday: 'short' });
+    
+    // Opción 2: Día completo (si prefieres "Lunes, Martes", etc.)
+    // const diaSemana = date.toLocaleDateString('es-ES', { weekday: 'long' });
+    
+    const fechaCompleta = date.toLocaleDateString('es-ES', {
         day: '2-digit',
         month: 'short',
         year: 'numeric'
     });
+    
+    // Capitalizar primera letra del día
+    const diaCapitalizado = diaSemana.charAt(0).toUpperCase() + diaSemana.slice(1);
+    
+    return `${diaCapitalizado}, ${fechaCompleta}`;
 };
 </script>
 

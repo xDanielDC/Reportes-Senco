@@ -57,7 +57,7 @@ const logout = () => {
 
                                 <NavLink :href="route('report.index')"
                                          :active="route().current('report.index')"
-                                         v-permission:any="'report.create|report.edit|report.destroy'">
+                                         v-permission:any="'report.create|report.edit|report.destroy|report.view|report.index'">
                                     <font-awesome-icon icon="chart-simple" class="mr-2"/>
                                     Reportes
                                 </NavLink>
@@ -78,50 +78,63 @@ const logout = () => {
                                         </div>
                                     </NavLink>
                                 </template>
-                                <template v-if="$page.props.auth.user.permissions?.some(p => p.startsWith('rutas-tecnicas.'))">
+                                <!-- <template v-if="$page.props.auth.user.permissions?.some(p => p.startsWith('rutas-tecnicas.'))">
                                     <NavLink :href="route('rutas-tecnicas.create')" :active="route().current('rutas-tecnicas.*')">
                                         <div class="flex items-center">
                                             <font-awesome-icon icon="fa-solid fa-screwdriver-wrench" class="mr-2"/>
                                             Rutas Técnicas
                                         </div>
                                     </NavLink>
-                                </template>
-                                <!-- <div class="relative inline-flex items-center px-1 pt-1 border-b-2 border-transparent"
-                                     v-permission:any="'design.request|design.priority|design.state|design.time-state'">
+                                </template> -->
+
+                                <div class="relative inline-flex items-center px-1 pt-1 border-b-2 border-transparent"
+                                     v-if="$page.props.auth.user.permissions?.some(p => p.startsWith('rutas-tecnicas.'))">
                                     <Dropdown align="left" width="60">
                                         <template #trigger>
-                                            <a href="javascript:void(0)" class="text-sm font-medium leading-5 text-gray-500 hover:text-gray-700 hover:border-gray-300 focus:outline-none focus:text-gray-700 focus:border-gray-300 transition duration-150 ease-in-out">
-                                                <font-awesome-icon icon="compass-drafting" class="mr-2"/>
-                                                Diseño
+                                            <a href="javascript:void(0)"
+                                               class="text-sm font-medium leading-5 text-gray-500 hover:text-gray-700 hover:border-gray-300 focus:outline-none focus:text-gray-700 focus:border-gray-300 transition duration-150 ease-in-out">
+                                                <font-awesome-icon icon="gears" class="mr-2"/>
+                                                Gestion de Clientes
                                                 <font-awesome-icon icon="chevron-down" class="ml-2"/>
                                             </a>
                                         </template>
 
                                         <template #content>
                                             <div class="w-48">
-                                                <DropdownLink :href="route('request.index')" v-permission="'design.request'">
-                                                    <font-awesome-icon icon="pen-ruler" class="mr-2"/>
-                                                    Solicitudes
+                                                <DropdownLink :href="route('rutas-tecnicas.create')"
+                                                              v-if="$page.props.auth.user.permissions?.some(p => p.startsWith('rutas-tecnicas.'))">
+                                                    <font-awesome-icon icon="fa-solid fa-screwdriver-wrench" class="mr-2"/>
+                                                    Rutas Técnicas
                                                 </DropdownLink>
 
-                                                <DropdownLink :href="route('priority.index')" v-permission="'design.priority'">
-                                                    <font-awesome-icon icon="star" class="mr-2"/>
-                                                    Prioridades
-                                                </DropdownLink>
+                                                <div class="border-t border-gray-200 my-1" />
 
-                                                <DropdownLink :href="route('state.index')" v-permission="'design.state'">
-                                                    <font-awesome-icon icon="list-ol" class="mr-2"/>
-                                                    Estados
-                                                </DropdownLink>
+                                                <a
+                                                    href="https://zeroone.la/login"
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    class="block pl-3 pr-4 py-2 border-l-4 border-transparent text-base font-medium text-gray-600
+                                                           hover:text-gray-800 hover:bg-gray-50 hover:border-gray-300 transition"
+                                                >
+                                                    <font-awesome-icon icon="arrow-up-right-from-square" class="mr-2"/>
+                                                    Portal ZeroOne
+                                                </a>
 
-                                                <DropdownLink :href="route('time-state.index')" v-permission="'design.time-state'">
-                                                    <font-awesome-icon icon="clock" class="mr-2"/>
-                                                    Estados de tiempo
-                                                </DropdownLink>
+                                                <!-- Clientes ZeroOne -->
+                                                <a
+                                                    href="https://senco.zeroone.la/formulario/623037ff-cbc4-445d-c865-08daa7034d2d?token=9c1a5cfd-c6f9-49e0-2f73-08dbae4dcb03"
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    class="block pl-3 pr-4 py-2 border-l-4 border-transparent text-base font-medium text-gray-600
+                                                           hover:text-gray-800 hover:bg-gray-50 hover:border-gray-300 transition"
+                                                >
+                                                    <font-awesome-icon icon="users" class="mr-2"/>
+                                                    Clientes ZeroOne
+                                                </a>
                                             </div>
                                         </template>
                                     </Dropdown>
-                                </div> -->
+                                </div>
 
                                 <div class="relative inline-flex items-center px-1 pt-1 border-b-2 border-transparent"
                                      v-permission:any="'user.create|user.edit|user.destroy|role.create|role.edit|role.destroy|permission.create|permission.edit|permission.destroy|import-report|report.filter.index|report.filter.edit|report.filter.create|report.filter.destroy'">
@@ -335,14 +348,47 @@ const logout = () => {
                         </ResponsiveNavLink>
 
                         <template v-if="$page.props.auth.user.permissions?.some(p => p.startsWith('rutas-tecnicas.'))">
-    <ResponsiveNavLink
-        :href="route('rutas-tecnicas.create')"
-        :active="route().current('rutas-tecnicas.*')"
-    >
-        <font-awesome-icon icon="fa-solid fa-screwdriver-wrench" class="mr-2"/>
-        Rutas Técnicas
-    </ResponsiveNavLink>
-</template>
+                            <ResponsiveNavLink
+                                :href="route('rutas-tecnicas.create')"
+                                :active="route().current('rutas-tecnicas.*')"
+                            >
+                                <font-awesome-icon icon="fa-solid fa-screwdriver-wrench" class="mr-2"/>
+                                Rutas Técnicas
+                            </ResponsiveNavLink>
+                        </template>
+
+                        <template v-if="$page.props.auth.user.permissions?.some(p => p.startsWith('rutas-tecnicas.'))">
+                            <a
+                                href="https://zeroone.la/login"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                class="block pl-3 pr-4 py-2 border-l-4 border-transparent
+                                        text-base font-medium text-gray-600
+                                        hover:text-gray-800 hover:bg-gray-50 hover:border-gray-300
+                                        focus:outline-none focus:text-gray-800 focus:bg-gray-50 focus:border-gray-300
+                                        transition"
+                            >
+                                <font-awesome-icon icon="arrow-up-right-from-square" class="mr-2"/>
+                                Portal ZeroOne
+                            </a>
+
+                            <a
+                                as ="a"
+                                href="https://senco.zeroone.la/formulario/623037ff-cbc4-445d-c865-08daa7034d2d?token=9c1a5cfd-c6f9-49e0-2f73-08dbae4dcb03"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                class="block pl-3 pr-4 py-2 border-l-4 border-transparent
+                                        text-base font-medium text-gray-600
+                                        hover:text-gray-800 hover:bg-gray-50 hover:border-gray-300
+                                        focus:outline-none focus:text-gray-800 focus:bg-gray-50 focus:border-gray-300
+                                        transition"
+                            >
+                                <font-awesome-icon icon="users" class="mr-2"/>
+                                Clientes ZeroOne
+                            </a>
+                        </template>
+
+
 
                         <ResponsiveNavLink :href="route('roles.index')"
                                            :active="route().current('roles.index')"
