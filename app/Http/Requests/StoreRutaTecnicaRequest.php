@@ -25,6 +25,8 @@ class StoreRutaTecnicaRequest extends FormRequest
             'visitas.*.nom_contacto' => 'nullable|string|max:200',
             'visitas.*.observaciones' => 'nullable|string|max:500',
             'visitas.*.cod_asesor' => 'nullable|string|max:50',
+            'visitas.*.cod_tecnico' => 'required|string|max:50',
+            'visitas.*.tecnico_nombre' => 'nullable|string|max:200',
         ];
     }
 
@@ -43,6 +45,7 @@ class StoreRutaTecnicaRequest extends FormRequest
             'visitas.*.fecha_visita.required' => 'La fecha de visita es requerida',
             'visitas.*.fecha_visita.after_or_equal' => 'La fecha de visita debe estar dentro del rango de la ruta',
             'visitas.*.fecha_visita.before_or_equal' => 'La fecha de visita debe estar dentro del rango de la ruta',
+            'visitas.*.cod_tecnico.required' => 'Debe seleccionar un técnico para cada visita',
         ];
     }
 }

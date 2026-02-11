@@ -78,6 +78,9 @@ const formatearFecha = (fecha) => {
                         <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                             Asesor
                         </th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Técnico Asignado
+                        </th>
                         <th scope="col" class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                             Acciones
                         </th>
@@ -127,6 +130,13 @@ const formatearFecha = (fecha) => {
                             <span v-if="visita.cod_asesor" class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
                                 {{ visita.cod_asesor }}
                             </span>
+                            <span v-else class="text-gray-400">-</span>
+                        </td>
+                        <td class="px-6 py-4">
+                            <div v-if="visita.tecnico_nombre || visita.cod_tecnico" class="text-sm text-gray-900">
+                                <div class="font-medium">{{ visita.tecnico_nombre || 'Técnico' }}</div>
+                                <div class="text-xs text-gray-500">Cod: {{ visita.cod_tecnico || 'N/A' }}</div>
+                            </div>
                             <span v-else class="text-gray-400">-</span>
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">

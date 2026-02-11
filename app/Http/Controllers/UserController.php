@@ -22,16 +22,23 @@ class UserController extends Controller
      */
     public function index()
     {
-        $users = User::with('reports')->get();
+        $users = User::with('reports', 'roles')->get();
         $roles = Role::all();
         $permissions = Permission::all();
         $reports = Report::all();
+        $technicalUsers = User::whereHas('roles', function ($query) {
+            $query->whereRaw('LOWER(name) IN (?, ?)', ['tecnico', 'técnico']);
+        })
+            ->select(['id', 'name', 'username', 'email', 'codigo_vendedor'])
+            ->orderBy('name')
+            ->get();
 
         return Inertia::render('Users/Index', [
             'users' => $users,
             'roles' => $roles,
             'permissions' => $permissions,
             'reports' => $reports,
+            'technicalUsers' => $technicalUsers,
         ]);
     }
 
@@ -54,11 +61,30 @@ class UserController extends Controller
             $user->reports()->sync($request->reports);
             $user->syncPermissions($request->permissions);
             $user->syncRoles($request->roles);
-            
+
+            $selectedRoles = collect($request->roles ?? [])->map(function ($role) {
+                return mb_strtolower(trim($role));
+            });
+
+            if ($selectedRoles->contains('asesor')) {
+                $technicalUserIds = collect($request->technical_users ?? [])
+                    ->filter()
+                    ->unique()
+                    ->values()
+                    ->all();
+
+                if (!empty($technicalUserIds)) {
+                    User::whereIn('id', $technicalUserIds)
+                        ->whereHas('roles', function ($query) {
+                            $query->whereRaw('LOWER(name) IN (?, ?)', ['tecnico', 'técnico']);
+                        })
+                        ->update(['advisor_id' => $user->id]);
+                }
+            }
 
             DB::commit();
 
-            $users = User::all();
+            $users = User::with('reports', 'roles')->get();
 
             return response()->json($users, 200);
         } catch (Exception $e) {
@@ -95,9 +121,44 @@ class UserController extends Controller
             $user->syncPermissions($request->permissions);
             $user->syncRoles($request->roles);
 
+            $selectedRoles = collect($request->roles ?? [])->map(function ($role) {
+                return mb_strtolower(trim($role));
+            });
+
+            if ($selectedRoles->contains('asesor')) {
+                $technicalUserIds = collect($request->technical_users ?? [])
+                    ->filter()
+                    ->unique()
+                    ->values()
+                    ->all();
+
+                User::where('advisor_id', $user->id)
+                    ->whereHas('roles', function ($query) {
+                        $query->whereRaw('LOWER(name) IN (?, ?)', ['tecnico', 'técnico']);
+                    })
+                    ->when(!empty($technicalUserIds), function ($query) use ($technicalUserIds) {
+                        $query->whereNotIn('id', $technicalUserIds);
+                    })
+                    ->update(['advisor_id' => null]);
+
+                if (!empty($technicalUserIds)) {
+                    User::whereIn('id', $technicalUserIds)
+                        ->whereHas('roles', function ($query) {
+                            $query->whereRaw('LOWER(name) IN (?, ?)', ['tecnico', 'técnico']);
+                        })
+                        ->update(['advisor_id' => $user->id]);
+                }
+            } else {
+                User::where('advisor_id', $user->id)
+                    ->whereHas('roles', function ($query) {
+                        $query->whereRaw('LOWER(name) IN (?, ?)', ['tecnico', 'técnico']);
+                    })
+                    ->update(['advisor_id' => null]);
+            }
+
             DB::commit();
 
-            $users = User::all();
+            $users = User::with('reports', 'roles')->get();
 
             return response()->json($users, 200);
         } catch (Exception $e) {
@@ -152,7 +213,7 @@ class UserController extends Controller
     {
         User::destroy($id);
 
-        $users = User::all();
+        $users = User::with('reports', 'roles')->get();
 
         return response()->json($users, 200);
     }
@@ -162,13 +223,19 @@ class UserController extends Controller
      */
     public function show($id)
     {
-        $user = User::with('roles', 'permissions', 'reports')
+        $user = User::with('roles', 'permissions', 'reports', 'technicalUsers.roles')
             ->find($id);
 
         $roles = Role::all();
         $permissions = Permission::all();
         $reports = Report::all();
         $filters = ReportFilter::all();
+        $technicalUsers = User::whereHas('roles', function ($query) {
+            $query->whereRaw('LOWER(name) IN (?, ?)', ['tecnico', 'técnico']);
+        })
+            ->select(['id', 'name', 'username', 'email', 'codigo_vendedor', 'advisor_id'])
+            ->orderBy('name')
+            ->get();
 
         return Inertia::render('Users/Show', [
             'user' => $user,
@@ -176,6 +243,7 @@ class UserController extends Controller
             'permissions' => $permissions,
             'reports' => $reports,
             'filters' => $filters,
+            'technicalUsers' => $technicalUsers,
         ]);
     }
 

@@ -3,8 +3,9 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
-use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Collection;
@@ -50,7 +51,8 @@ class User extends Authenticatable
         'domain',         
         'is_ldap_user',
         'cedula',
-        'codigo_vendedor',   
+        'codigo_vendedor',
+        'advisor_id',
     ];
 
     /**
@@ -97,6 +99,16 @@ class User extends Authenticatable
     {
         return $this->belongsToMany(Report::class, 'user_reports')
             ->withPivot('user_id', 'report_id');
+    }
+
+    public function advisor(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'advisor_id');
+    }
+
+    public function technicalUsers(): HasMany
+    {
+        return $this->hasMany(self::class, 'advisor_id');
     }
 
     public function getRoleNamesAttribute(): Collection

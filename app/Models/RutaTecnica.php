@@ -9,7 +9,7 @@ use Carbon\Carbon;
 class RutaTecnica extends Model
 {
     protected $connection = 'senco360';
-    protected $table = 'RutasTecnicas';
+    protected $table = 'RT_rutastecnicas';
     public $incrementing = true;
     protected $keyType = 'int';
     protected $primaryKey = 'idVisita';
@@ -26,6 +26,7 @@ class RutaTecnica extends Model
         'NomContacto',
         'TelContacto',
         'CodVendedor',
+        'CodTecnico',
         'Observaciones',
     ];
 

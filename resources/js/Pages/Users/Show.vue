@@ -171,6 +171,44 @@
                                     </template>
                                 </fieldset>
 
+                                <fieldset v-if="isAdvisorSelected" class="border rounded-lg p-4 col-span-3">
+                                    <legend>Técnicos asignados</legend>
+                                    <select
+                                        v-model="form.technical_users"
+                                        class="border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 rounded-md shadow-sm mt-1 block w-full"
+                                        size="8"
+                                        multiple
+                                    >
+                                        <option
+                                            v-for="technicalUser in technicalUsers"
+                                            :key="technicalUser.id"
+                                            :value="technicalUser.id"
+                                        >
+                                            {{ technicalUser.name }} | Usuario: {{ technicalUser.username }} | Cod: {{ technicalUser.codigo_vendedor || 'N/A' }}
+                                        </option>
+                                    </select>
+                                    <p class="text-sm text-gray-500 mt-2">
+                                        Mantén presionada la tecla Ctrl para seleccionar varios usuarios técnicos.
+                                    </p>
+                                    <div class="mt-3">
+                                        <p class="text-sm font-semibold text-gray-700">
+                                            Técnicos guardados actualmente:
+                                        </p>
+                                        <ul v-if="selectedTechnicalUsers.length > 0" class="mt-2 space-y-1">
+                                            <li
+                                                v-for="technicalUser in selectedTechnicalUsers"
+                                                :key="technicalUser.id"
+                                                class="text-sm text-gray-700"
+                                            >
+                                                {{ technicalUser.name }} | Usuario: {{ technicalUser.username }} | Cod: {{ technicalUser.codigo_vendedor || 'N/A' }}
+                                            </li>
+                                        </ul>
+                                        <p v-else class="text-sm text-gray-500 mt-2">
+                                            Este asesor no tiene técnicos asignados.
+                                        </p>
+                                    </div>
+                                </fieldset>
+
                                 <fieldset class="border rounded-lg p-4 col-span-3">
                                     <legend>Permisos disponibles</legend>
                                     <div class="grid grid-cols-5 gap-5">
@@ -358,6 +396,12 @@ export default {
     computed: {
         report() {
             return report
+        },
+        isAdvisorSelected() {
+            return this.form.roles.some(role => role?.toLowerCase?.() === 'asesor');
+        },
+        selectedTechnicalUsers() {
+            return this.technicalUsers.filter(row => this.form.technical_users.includes(row.id));
         }
     },
     setup() {
@@ -380,7 +424,8 @@ export default {
         roles: Array,
         permissions: Array,
         reports: Array,
-        filters: Array
+        filters: Array,
+        technicalUsers: Array
     },
 
     validations() {
@@ -437,6 +482,9 @@ export default {
                 reports: [],
                 permissions: this.user.permissions.map(row => row.name),
                 roles: this.user.roles.map(row => row.name),
+                technical_users: this.technicalUsers
+                    .filter(row => row.advisor_id === this.user.id)
+                    .map(row => row.id),
             },
 
             filterModal: {

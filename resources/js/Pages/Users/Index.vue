@@ -230,6 +230,26 @@
                     </template>
                 </div>
 
+                <div v-if="isAdvisorSelected" class="mt-4">
+                    <InputLabel value="Técnicos asignados (opcional)"/>
+                    <select
+                        v-model="modal.form.technical_users"
+                        class="border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 rounded-md shadow-sm mt-1 block w-full"
+                        multiple
+                    >
+                        <option
+                            v-for="technicalUser in technicalUsers"
+                            :key="technicalUser.id"
+                            :value="technicalUser.id"
+                        >
+                            {{ technicalUser.name }} | Usuario: {{ technicalUser.username }} | Cod: {{ technicalUser.codigo_vendedor || 'N/A' }}
+                        </option>
+                    </select>
+                    <p class="text-sm text-gray-500 mt-1">
+                        Mantén presionada la tecla Ctrl para seleccionar varios usuarios.
+                    </p>
+                </div>
+
                 <div class="mt-4">
                     <InputLabel value="Permisos Disponibles"/>
                     <div class="grid grid-cols-3 gap-5 mt-2">
@@ -278,8 +298,7 @@ import Checkbox from "@/Components/Checkbox.vue";
 import {FontAwesomeIcon} from "@fortawesome/vue-fontawesome";
 import CustomButton from "@/Components/CustomButton.vue";
 import {Link} from "@inertiajs/vue3";
-import {reactive, toRefs} from "vue";
-import {helper} from "@/Utils/helper.js";
+import {computed, reactive, toRefs} from "vue";
 
 const props = defineProps({
     users: {
@@ -295,6 +314,10 @@ const props = defineProps({
         default: []
     },
     reports: {
+        type: Array,
+        default: []
+    },
+    technicalUsers: {
         type: Array,
         default: []
     },
@@ -349,7 +372,8 @@ const modal = reactive({
         password: '',
         reports: [],
         permissions: [],
-        roles: []
+        roles: [],
+        technical_users: []
     }
 });
 
@@ -388,6 +412,10 @@ const rules = {
 
 const v$ = useVuelidate(rules, toRefs(modal));
 
+const isAdvisorSelected = computed(() =>
+    modal.form.roles.some((role) => role?.toLowerCase?.() === 'asesor')
+);
+
 const create = () => {
     modal.open = true
     modal.title = 'Crear Usuario'
@@ -408,7 +436,8 @@ const closeModal = () => {
         password: '',
         reports: [],
         permissions: [],
-        roles: []
+        roles: [],
+        technical_users: []
     }
     v$.value.form.$reset()
 }

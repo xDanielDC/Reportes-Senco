@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 use App\Models\RutaTecnica;
+use App\Models\User;
 
 class RutaTecnicaController extends Controller
 {
@@ -26,7 +27,18 @@ class RutaTecnicaController extends Controller
      */
     public function create()
     {
-        return Inertia::render('RutasTecnicas/Create');
+        $technicalUsers = User::where('advisor_id', Auth::id())
+            ->whereHas('roles', function ($query) {
+                $query->whereRaw('LOWER(name) IN (?, ?)', ['tecnico', 'técnico']);
+            })
+            ->whereNotNull('codigo_vendedor')
+            ->select(['id', 'name', 'codigo_vendedor'])
+            ->orderBy('name')
+            ->get();
+
+        return Inertia::render('RutasTecnicas/Create', [
+            'technicalUsers' => $technicalUsers,
+        ]);
     }
 
     /**
@@ -39,6 +51,16 @@ class RutaTecnicaController extends Controller
         try {
             $codVendedor = Auth::user()->codigo_vendedor;
             $numeroRuta = RutaTecnica::generarNumeroRuta();
+            $allowedCodTecnicos = User::where('advisor_id', Auth::id())
+                ->whereHas('roles', function ($query) {
+                    $query->whereRaw('LOWER(name) IN (?, ?)', ['tecnico', 'técnico']);
+                })
+                ->whereNotNull('codigo_vendedor')
+                ->pluck('codigo_vendedor')
+                ->map(function ($codigo) {
+                    return trim($codigo);
+                })
+                ->all();
             
             Log::info('Guardando ruta técnica', [
                 'numero_ruta' => $numeroRuta,
@@ -47,6 +69,11 @@ class RutaTecnicaController extends Controller
             ]);
 
             foreach ($request->visitas as $visita) {
+                $codTecnico = trim($visita['cod_tecnico'] ?? '');
+                if (empty($codTecnico) || !in_array($codTecnico, $allowedCodTecnicos, true)) {
+                    throw new \Exception('El técnico seleccionado no es válido para tu usuario.');
+                }
+
                 RutaTecnica::create([
                     'NumeroRuta' => $numeroRuta,
                     'FechaInicio' => $request->fecha_inicio,
@@ -58,6 +85,7 @@ class RutaTecnicaController extends Controller
                     'NomContacto' => $visita['nom_contacto'] ?? null,
                     'TelContacto' => $visita['tel_contacto'] ?? null,
                     'CodVendedor' => $codVendedor,
+                    'CodTecnico' => $codTecnico,
                     'Observaciones' => $visita['observaciones'] ?? null,
                 ]);
             }

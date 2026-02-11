@@ -1,13 +1,19 @@
 <script setup>
 import { ref, computed, watch } from 'vue';
-import { router, useForm, usePage } from '@inertiajs/vue3';
-import AuthenticatedLayout from '@/Layouts/AppLayout.vue';
+import { useForm, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import BuscadorClientes from '@/Components/RutasTecnicas/BuscadorClientes.vue';
 import SelectorDireccion from '@/Components/RutasTecnicas/SelectorDireccion.vue';
 import ListaVisitas from '@/Components/RutasTecnicas/ListaVisitas.vue';
 
 const page = usePage();
+
+const props = defineProps({
+    technicalUsers: {
+        type: Array,
+        default: () => []
+    }
+});
 
 const form = useForm({
     fecha_inicio: '',
@@ -34,6 +40,9 @@ const visitaForm = ref({
     nom_contacto: '',
     observaciones: '',
     cod_asesor: '',
+    tecnico_user_id: null,
+    tecnico_nombre: '',
+    cod_tecnico: '',
 });
 
 const hoy = computed(() => new Date().toISOString().split('T')[0]);
@@ -45,6 +54,55 @@ const fechasValidas = computed(() => {
 const puedeGuardar = computed(() => {
     return fechasValidas.value && form.visitas.length > 0;
 });
+
+const tecnicosAsociados = computed(() => props.technicalUsers || []);
+const tieneUnTecnico = computed(() => tecnicosAsociados.value.length === 1);
+const tieneTecnicosAsociados = computed(() => tecnicosAsociados.value.length > 0);
+const tecnicoSeleccionadoActual = computed(() => {
+    if (!visitaForm.value.cod_tecnico && !visitaForm.value.tecnico_user_id) {
+        return null;
+    }
+
+    const porId = tecnicosAsociados.value.find((row) => String(row.id) === String(visitaForm.value.tecnico_user_id));
+    if (porId) {
+        return porId;
+    }
+
+    const porCodigo = tecnicosAsociados.value.find((row) => row.codigo_vendedor === visitaForm.value.cod_tecnico);
+    if (porCodigo) {
+        return porCodigo;
+    }
+
+    return {
+        id: visitaForm.value.tecnico_user_id || 'manual',
+        name: visitaForm.value.tecnico_nombre || 'Tecnico',
+        codigo_vendedor: visitaForm.value.cod_tecnico || 'N/A',
+    };
+});
+
+const asignarTecnico = (tecnico) => {
+    if (!tecnico) {
+        visitaForm.value.tecnico_user_id = null;
+        visitaForm.value.tecnico_nombre = '';
+        visitaForm.value.cod_tecnico = '';
+        return;
+    }
+
+    visitaForm.value.tecnico_user_id = tecnico.id;
+    visitaForm.value.tecnico_nombre = tecnico.name;
+    visitaForm.value.cod_tecnico = tecnico.codigo_vendedor || '';
+};
+
+const seleccionarTecnicoPorId = (tecnicoId) => {
+    const tecnico = tecnicosAsociados.value.find((row) => String(row.id) === String(tecnicoId));
+    asignarTecnico(tecnico);
+};
+
+const prepararTecnicoPorDefecto = () => {
+    if (tieneUnTecnico.value) {
+        asignarTecnico(tecnicosAsociados.value[0]);
+    }
+};
 
 watch(() => page.props.flash, (flash) => {
     if (flash?.success) {
@@ -82,9 +140,13 @@ const resetearVisitaForm = () => {
         nom_contacto: '',
         observaciones: '',
         cod_asesor: '',
+        tecnico_user_id: null,
+        tecnico_nombre: '',
+        cod_tecnico: '',
     };
     clienteSeleccionado.value = null;
     direccionSeleccionada.value = null;
+    prepararTecnicoPorDefecto();
 };
 
 const seleccionarCliente = (cliente) => {
@@ -99,11 +161,20 @@ const seleccionarDireccion = (direccion) => {
     direccionSeleccionada.value = direccion;
     visitaForm.value.direccion_id = direccion.DireccionId;
     visitaForm.value.direccion_completa = direccion.DireccionCompleta;
+
+    if (tieneUnTecnico.value) {
+        asignarTecnico(tecnicosAsociados.value[0]);
+    }
 };
 
 const agregarVisita = () => {
     if (!visitaForm.value.cliente_id || !visitaForm.value.fecha_visita || !visitaForm.value.direccion_completa) {
         alert('Por favor completa todos los campos requeridos');
+        return;
+    }
+
+    if (!visitaForm.value.cod_tecnico) {
+        alert('Debes seleccionar un técnico para la visita');
         return;
     }
 
@@ -125,6 +196,18 @@ const editarVisita = (index) => {
     visitaEditando.value = index;
     const visita = form.visitas[index];
     visitaForm.value = { ...visita };
+
+    if (!visitaForm.value.tecnico_user_id && visitaForm.value.cod_tecnico) {
+        const tecnico = tecnicosAsociados.value.find((row) => row.codigo_vendedor === visitaForm.value.cod_tecnico);
+        if (tecnico) {
+            visitaForm.value.tecnico_user_id = tecnico.id;
+            visitaForm.value.tecnico_nombre = tecnico.name;
+        }
+    }
+
+    if (!visitaForm.value.cod_tecnico && tieneUnTecnico.value) {
+        asignarTecnico(tecnicosAsociados.value[0]);
+    }
     
     // Necesitamos recrear el objeto cliente para que el componente funcione
     clienteSeleccionado.value = {
@@ -366,6 +449,46 @@ const cerrarNotificacion = () => {
                                     :key="visitaForm.cliente_id"
                                     @seleccionar="seleccionarDireccion"
                                 />
+                            </div>
+
+                            <div v-if="visitaForm.direccion_id" class="mb-4">
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Técnico asignado *</label>
+
+                                <div v-if="!tieneTecnicosAsociados" class="rounded-md bg-red-50 border border-red-200 p-3 text-sm text-red-700">
+                                    No tienes técnicos asociados. Contacta a un administrador para asignar técnicos a tu usuario.
+                                </div>
+
+                                <div v-else-if="tieneUnTecnico" class="rounded-md bg-blue-50 border border-blue-200 p-3 text-sm text-blue-700">
+                                    Técnico asignado automáticamente:
+                                    <strong>{{ tecnicosAsociados[0].name }}</strong>
+                                    (Cod: {{ tecnicosAsociados[0].codigo_vendedor || 'N/A' }})
+                                </div>
+
+                                <select
+                                    v-else
+                                    v-model="visitaForm.tecnico_user_id"
+                                    @change="seleccionarTecnicoPorId(visitaForm.tecnico_user_id)"
+                                    class="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                                >
+                                    <option :value="null" disabled>Seleccione un técnico...</option>
+                                    <option
+                                        v-for="tecnico in tecnicosAsociados"
+                                        :key="tecnico.id"
+                                        :value="tecnico.id"
+                                    >
+                                        {{ tecnico.name }} | Cod: {{ tecnico.codigo_vendedor || 'N/A' }}
+                                    </option>
+                                </select>
+
+                                <div v-if="tecnicoSeleccionadoActual" class="mt-3 rounded-md border border-indigo-200 bg-indigo-50 p-3">
+                                    <div class="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-indigo-100 text-indigo-800">
+                                        Tecnico seleccionado
+                                    </div>
+                                    <div class="mt-2 text-sm text-indigo-900">
+                                        <strong>{{ tecnicoSeleccionadoActual.name }}</strong>
+                                        <span class="ml-2">Cod: {{ tecnicoSeleccionadoActual.codigo_vendedor || visitaForm.cod_tecnico || 'N/A' }}</span>
+                                    </div>
+                                </div>
                             </div>
 
                             <div class="mb-4">
