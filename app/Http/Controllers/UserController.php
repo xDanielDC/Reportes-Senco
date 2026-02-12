@@ -126,27 +126,35 @@ class UserController extends Controller
             });
 
             if ($selectedRoles->contains('asesor')) {
-                $technicalUserIds = collect($request->technical_users ?? [])
-                    ->filter()
-                    ->unique()
-                    ->values()
-                    ->all();
+                // Solo sincronizar técnicos cuando el payload incluye el campo.
+                if ($request->exists('technical_users')) {
+                    $technicalUserIds = collect($request->technical_users ?? [])
+                        ->map(function ($id) {
+                            return (int) $id;
+                        })
+                        ->filter(function ($id) {
+                            return $id > 0;
+                        })
+                        ->unique()
+                        ->values()
+                        ->all();
 
-                User::where('advisor_id', $user->id)
-                    ->whereHas('roles', function ($query) {
-                        $query->whereRaw('LOWER(name) IN (?, ?)', ['tecnico', 'técnico']);
-                    })
-                    ->when(!empty($technicalUserIds), function ($query) use ($technicalUserIds) {
-                        $query->whereNotIn('id', $technicalUserIds);
-                    })
-                    ->update(['advisor_id' => null]);
-
-                if (!empty($technicalUserIds)) {
-                    User::whereIn('id', $technicalUserIds)
+                    User::where('advisor_id', $user->id)
                         ->whereHas('roles', function ($query) {
                             $query->whereRaw('LOWER(name) IN (?, ?)', ['tecnico', 'técnico']);
                         })
-                        ->update(['advisor_id' => $user->id]);
+                        ->when(!empty($technicalUserIds), function ($query) use ($technicalUserIds) {
+                            $query->whereNotIn('id', $technicalUserIds);
+                        })
+                        ->update(['advisor_id' => null]);
+
+                    if (!empty($technicalUserIds)) {
+                        User::whereIn('id', $technicalUserIds)
+                            ->whereHas('roles', function ($query) {
+                                $query->whereRaw('LOWER(name) IN (?, ?)', ['tecnico', 'técnico']);
+                            })
+                            ->update(['advisor_id' => $user->id]);
+                    }
                 }
             } else {
                 User::where('advisor_id', $user->id)

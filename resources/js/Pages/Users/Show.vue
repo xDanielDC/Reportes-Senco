@@ -401,7 +401,8 @@ export default {
             return this.form.roles.some(role => role?.toLowerCase?.() === 'asesor');
         },
         selectedTechnicalUsers() {
-            return this.technicalUsers.filter(row => this.form.technical_users.includes(row.id));
+            const selectedIds = this.form.technical_users.map((id) => Number(id));
+            return this.technicalUsers.filter(row => selectedIds.includes(Number(row.id)));
         }
     },
     setup() {
@@ -483,8 +484,8 @@ export default {
                 permissions: this.user.permissions.map(row => row.name),
                 roles: this.user.roles.map(row => row.name),
                 technical_users: this.technicalUsers
-                    .filter(row => row.advisor_id === this.user.id)
-                    .map(row => row.id),
+                    .filter(row => Number(row.advisor_id) === Number(this.user.id))
+                    .map(row => Number(row.id)),
             },
 
             filterModal: {
@@ -551,7 +552,7 @@ export default {
                 });
 
                 this.closeModal()
-                router.visit(route('users.edit', this.user.id))
+                router.visit(route('users.show', this.user.id))
             }).catch(err => {
                 this.$swal({
                     icon: 'error',
@@ -585,7 +586,7 @@ export default {
                 });
 
                 this.closeModal()
-                router.visit(route('users.edit', this.user.id))
+                router.visit(route('users.show', this.user.id))
             }).catch(err => {
                 this.$swal({
                     icon: 'error',
@@ -605,6 +606,10 @@ export default {
                     text: 'Verifica que toda la información este correctamente diligenciada'
                 });
             } else {
+                this.form.technical_users = this.form.technical_users
+                    .map((id) => Number(id))
+                    .filter((id) => Number.isInteger(id) && id > 0);
+
                 axios.put(route('users.update', this.form.id), this.form).then(() => {
                     this.$swal({
                         icon: 'success',
@@ -617,7 +622,7 @@ export default {
                         timerProgressBar: true,
                     });
 
-                    router.visit(route('users.edit', this.user.id))
+                    router.visit(route('users.show', this.user.id))
                 }).catch(err => {
                     this.$swal({
                         icon: 'error',
@@ -645,7 +650,7 @@ export default {
                     timerProgressBar: true,
                 });
 
-                router.visit(route('users.edit', this.user.id))
+                router.visit(route('users.show', this.user.id))
             }).catch(err => {
                 this.$swal({
                     icon: 'error',
