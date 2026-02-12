@@ -5,7 +5,6 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Collection;
@@ -106,9 +105,16 @@ class User extends Authenticatable
         return $this->belongsTo(self::class, 'advisor_id');
     }
 
-    public function technicalUsers(): HasMany
+    public function technicalUsers(): BelongsToMany
     {
-        return $this->hasMany(self::class, 'advisor_id');
+        return $this->belongsToMany(self::class, 'advisor_technical_user', 'advisor_id', 'technical_user_id')
+            ->withTimestamps();
+    }
+
+    public function advisors(): BelongsToMany
+    {
+        return $this->belongsToMany(self::class, 'advisor_technical_user', 'technical_user_id', 'advisor_id')
+            ->withTimestamps();
     }
 
     public function getRoleNamesAttribute(): Collection

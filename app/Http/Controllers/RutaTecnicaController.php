@@ -9,7 +9,6 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 use App\Models\RutaTecnica;
-use App\Models\User;
 
 class RutaTecnicaController extends Controller
 {
@@ -27,7 +26,7 @@ class RutaTecnicaController extends Controller
      */
     public function create()
     {
-        $technicalUsers = User::where('advisor_id', Auth::id())
+        $technicalUsers = Auth::user()->technicalUsers()
             ->whereHas('roles', function ($query) {
                 $query->whereRaw('LOWER(name) IN (?, ?)', ['tecnico', 'técnico']);
             })
@@ -51,7 +50,7 @@ class RutaTecnicaController extends Controller
         try {
             $codVendedor = Auth::user()->codigo_vendedor;
             $numeroRuta = RutaTecnica::generarNumeroRuta();
-            $allowedCodTecnicos = User::where('advisor_id', Auth::id())
+            $allowedCodTecnicos = Auth::user()->technicalUsers()
                 ->whereHas('roles', function ($query) {
                     $query->whereRaw('LOWER(name) IN (?, ?)', ['tecnico', 'técnico']);
                 })

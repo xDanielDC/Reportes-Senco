@@ -483,8 +483,7 @@ export default {
                 reports: [],
                 permissions: this.user.permissions.map(row => row.name),
                 roles: this.user.roles.map(row => row.name),
-                technical_users: this.technicalUsers
-                    .filter(row => Number(row.advisor_id) === Number(this.user.id))
+                technical_users: (this.user.technical_users || [])
                     .map(row => Number(row.id)),
             },
 
