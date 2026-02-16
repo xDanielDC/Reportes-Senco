@@ -73,13 +73,16 @@ class ListaPrecio extends Model
             return $query;
         }
 
-        return $query->where(function ($q) use ($search) {
-            $q->where('Cod Max', 'LIKE', "%{$search}%")
-              ->orWhere('Referencia', 'LIKE', "%{$search}%")
-              ->orWhere('Descripcion', 'LIKE', "%{$search}%")
-              ->orWhere('Clase', 'LIKE', "%{$search}%")
-              ->orWhere('Grupo', 'LIKE', "%{$search}%")
-              ->orWhere('Subgrupo', 'LIKE', "%{$search}%");
+        $pattern = '%' . trim($search) . '%';
+
+        return $query->where(function ($q) use ($pattern) {
+            $q->whereRaw('[Cod Max] COLLATE Latin1_General_CI_AI LIKE ?', [$pattern])
+              ->orWhereRaw('[Referencia] COLLATE Latin1_General_CI_AI LIKE ?', [$pattern])
+              ->orWhereRaw('[Descripcion] COLLATE Latin1_General_CI_AI LIKE ?', [$pattern])
+              ->orWhereRaw('[Tipo] COLLATE Latin1_General_CI_AI LIKE ?', [$pattern])
+              ->orWhereRaw('[Clase] COLLATE Latin1_General_CI_AI LIKE ?', [$pattern])
+              ->orWhereRaw('[Grupo] COLLATE Latin1_General_CI_AI LIKE ?', [$pattern])
+              ->orWhereRaw('[Subgrupo] COLLATE Latin1_General_CI_AI LIKE ?', [$pattern]);
         });
     }
 
@@ -153,6 +156,12 @@ class ListaPrecio extends Model
         ];
         
         if (in_array($field, $allowedFields)) {
+            if ($field === 'Tipo' && $direction === 'asc') {
+                return $query
+                    ->orderByRaw("CASE WHEN [Tipo] COLLATE Latin1_General_CI_AI LIKE 'ELEMENTOS%SUJECION%' THEN 0 ELSE 1 END")
+                    ->orderBy('Tipo', 'asc');
+            }
+
             return $query->orderBy($field, $direction);
         }
 

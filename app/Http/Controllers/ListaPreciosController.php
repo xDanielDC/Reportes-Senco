@@ -30,11 +30,6 @@ class ListaPreciosController extends Controller
         // Sanitizar parámetros de entrada
         $params = $this->service->sanitizarParametros($request->all());
 
-        // Si no hay filtro de tipo seleccionado, usar "ELEMENTOS DE SUJECION" por defecto
-        if (empty($params['tipo'])) {
-            $params['tipo'] = 'Elementos Sujeción';
-        }
-
         // Obtener productos paginados
         $productos = $this->service->getProductos($params);
 
