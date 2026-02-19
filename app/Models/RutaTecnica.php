@@ -28,12 +28,16 @@ class RutaTecnica extends Model
         'CodVendedor',
         'CodTecnico',
         'Observaciones',
+        'cerrada',
+        'fecha_cierre',
     ];
 
     protected $casts = [
         'FechaInicio' => 'date',
         'FechaFin' => 'date',
         'fechaVisita' => 'date',
+        'cerrada' => 'boolean',
+        'fecha_cierre' => 'datetime',
     ];
 
     /**
@@ -101,5 +105,76 @@ class RutaTecnica extends Model
     public function scopePorVendedor($query, $codVendedor)
     {
         return $query->where('CodVendedor', $codVendedor);
+    }
+
+    /**
+     * Scope para obtener solo rutas abiertas
+     */
+    public function scopeAbiertas($query)
+    {
+        return $query->where('cerrada', false);
+    }
+
+    /**
+     * Determinar si una ruta debe cerrarse automáticamente
+     * Se cierra si es viernes después de las 2pm (sin importar la fecha fin)
+     */
+    public function debeCerrarse(): bool
+    {
+        // Si ya está cerrada, no necesita cerrarse
+        if ($this->cerrada) {
+            return false;
+        }
+
+        $ahora = Carbon::now();
+        $diaSemana = $ahora->dayOfWeek; // 5 = Friday
+        $hora = $ahora->hour;
+
+        // Verificar si es viernes después de las 14:00 (2pm)
+        // La ruta se cierra el viernes a las 2pm para que se asigne al técnico
+        return ($diaSemana === Carbon::FRIDAY && $hora >= 14);
+    }
+
+    /**
+     * Cerrar la ruta
+     */
+    public function cerrar(): bool
+    {
+        return $this->update([
+            'cerrada' => true,
+            'fecha_cierre' => Carbon::now()
+        ]);
+    }
+
+    /**
+     * Obtener el estado de la ruta (abierta/cerrada)
+     */
+    public function getEstadoAttribute(): string
+    {
+        // Si está marcada como cerrada, retornar cerrada
+        if ($this->cerrada) {
+            return 'cerrada';
+        }
+
+        // Verificar si debe cerrarse automáticamente
+        if ($this->debeCerrarse()) {
+            return 'cerrada';
+        }
+
+        return 'abierta';
+    }
+
+    /**
+     * Cerrar todas las rutas que deberían estar cerradas
+     */
+    public static function cerrarRutasVencidas()
+    {
+        $rutas = self::where('cerrada', false)->get();
+        
+        foreach ($rutas as $ruta) {
+            if ($ruta->debeCerrarse()) {
+                $ruta->cerrar();
+            }
+        }
     }
 }

@@ -2,6 +2,8 @@
 import { ref } from 'vue';
 import { router } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AppLayout.vue';
+import AppLayout from '@/Layouts/AppLayout.vue';
+
 
 const props = defineProps({
     rutas: Object,
@@ -11,15 +13,19 @@ const props = defineProps({
         default: () => ({
             crear: false,
             editar: false,
-            eliminar: false
+            eliminar: false,
+            ver: false
         })
+    },
+    error: {
+        type: String,
+        default: null
     }
 });
 
 const filtrosForm = ref({
     fecha_inicio: props.filtros?.fecha_inicio || '',
-    fecha_fin: props.filtros?.fecha_fin || '',
-    codigo_vendedor: props.filtros?.codigo_vendedor || ''
+    fecha_fin: props.filtros?.fecha_fin || ''
 });
 
 const aplicarFiltros = () => {
@@ -32,8 +38,7 @@ const aplicarFiltros = () => {
 const limpiarFiltros = () => {
     filtrosForm.value = {
         fecha_inicio: '',
-        fecha_fin: '',
-        codigo_vendedor: ''
+        fecha_fin: ''
     };
     aplicarFiltros();
 };
@@ -51,7 +56,7 @@ const eliminarRuta = (id) => {
 </script>
 
 <template>
-    <AuthenticatedLayout>
+    <AppLayout :title="'Rutas Técnicas'">
         <template #header>
             <div class="flex justify-between items-center">
                 <h2 class="font-semibold text-xl text-gray-800 leading-tight">
@@ -62,7 +67,7 @@ const eliminarRuta = (id) => {
                 <button
                     v-if="permisos.crear"
                     @click="router.visit(route('rutas-tecnicas.create'))"
-                    class="inline-flex items-center px-4 py-2 bg-indigo-600 border border-transparent rounded-md font-semibold text-xs text-white uppercase tracking-widest hover:bg-indigo-700 focus:bg-indigo-700 active:bg-indigo-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition ease-in-out duration-150"
+                    class="ml-2 inline-flex items-center px-4 py-2 bg-indigo-600 border border-transparent rounded-md font-semibold text-xs text-white uppercase tracking-widest hover:bg-indigo-700 focus:bg-indigo-700 active:bg-indigo-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition ease-in-out duration-150"
                 >
                     <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
@@ -79,11 +84,17 @@ const eliminarRuta = (id) => {
 
         <div class="py-12">
             <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
+                <!-- Mensaje de error -->
+                <div v-if="error" class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-6">
+                    <strong class="font-bold">Error: </strong>
+                    <span class="block sm:inline">{{ error }}</span>
+                </div>
+
                 <!-- Filtros -->
                 <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg mb-6">
                     <div class="p-6">
                         <h3 class="text-lg font-semibold mb-4">Filtros</h3>
-                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-2">Fecha Inicio</label>
                                 <input
@@ -98,15 +109,6 @@ const eliminarRuta = (id) => {
                                     type="date"
                                     v-model="filtrosForm.fecha_fin"
                                     class="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                                />
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-2">Código Vendedor</label>
-                                <input
-                                    type="text"
-                                    v-model="filtrosForm.codigo_vendedor"
-                                    class="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                                    placeholder="Código"
                                 />
                             </div>
                         </div>
@@ -130,7 +132,7 @@ const eliminarRuta = (id) => {
                 <!-- Lista de Rutas -->
                 <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                     <div class="p-6">
-                        <div v-if="rutas.data.length === 0" class="text-center py-8 text-gray-500">
+                        <div v-if="!rutas?.data || rutas.data.length === 0" class="text-center py-8 text-gray-500">
                             No hay rutas técnicas registradas
                         </div>
 
@@ -142,6 +144,9 @@ const eliminarRuta = (id) => {
                                             Número Ruta
                                         </th>
                                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                            Código Vendedor
+                                        </th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                             Fecha Inicio
                                         </th>
                                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -151,14 +156,20 @@ const eliminarRuta = (id) => {
                                             Visitas
                                         </th>
                                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                            Estado
+                                        </th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                             Acciones
                                         </th>
                                     </tr>
                                 </thead>
                                 <tbody class="bg-white divide-y divide-gray-200">
-                                    <tr v-for="ruta in rutas.data" :key="ruta.IdTransaccion">
+                                    <tr v-for="ruta in rutas.data" :key="ruta.NumeroRuta">
                                         <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                                             {{ ruta.NumeroRuta }}
+                                        </td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                            {{ ruta.CodVendedor }}
                                         </td>
                                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                             {{ ruta.FechaInicio }}
@@ -167,33 +178,41 @@ const eliminarRuta = (id) => {
                                             {{ ruta.FechaFin }}
                                         </td>
                                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                            {{ ruta.visitas?.length || 0 }}
+                                            {{ ruta.totalVisitas }}
+                                        </td>
+                                        <td class="px-6 py-4 whitespace-nowrap">
+                                            <span 
+                                                :class="ruta.cerrada ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'"
+                                                class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
+                                            >
+                                                {{ ruta.cerrada ? 'Cerrada' : 'Abierta' }}
+                                            </span>
                                         </td>
                                         <td class="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                                            <!-- Ver Detalle
+                                            <!-- Ver Detalle -->
                                             <button
-                                                @click="router.visit(route('rutas-tecnicas.show', ruta.IdTransaccion))"
+                                                @click="router.visit(route('rutas-tecnicas.show', ruta.NumeroRuta))"
                                                 class="text-indigo-600 hover:text-indigo-900"
                                             >
                                                 Ver
                                             </button>
-
-                                            Editar - Solo si tiene permiso 
+                                            
+                                            <!-- XXX Visitas - Solo si está abierta -->
                                             <button
-                                                v-if="permisos.editar"
-                                                @click="router.visit(route('rutas-tecnicas.edit', ruta.IdTransaccion))"
-                                                class="text-blue-600 hover:text-blue-900"
+                                                v-if="!ruta.cerrada"
+                                                @click="router.visit(route('rutas-tecnicas.show', ruta.NumeroRuta))"
+                                                class="text-green-600 hover:text-green-900 ml-2"
+                                            >
+                                                
+                                            </button>
+                                            
+                                            <!-- Editar - Solo si está abierta -->
+                                            <button
+                                                v-if="!ruta.cerrada"
+                                                @click="router.visit(route('rutas-tecnicas.edit', ruta.NumeroRuta))"
+                                                class="text-yellow-600 hover:text-yellow-900 ml-2"
                                             >
                                                 Editar
-                                            </button> -->
-
-                                            <!-- Eliminar - Solo si tiene permiso -->
-                                            <button
-                                                v-if="permisos.eliminar"
-                                                @click="eliminarRuta(ruta.IdTransaccion)"
-                                                class="text-red-600 hover:text-red-900"
-                                            >
-                                                Eliminar
                                             </button>
                                         </td>
                                     </tr>
@@ -202,12 +221,36 @@ const eliminarRuta = (id) => {
                         </div>
 
                         <!-- Paginación -->
-                        <div v-if="rutas.links" class="mt-4">
-                            <!-- Implementar paginación según tu sistema -->
+                        <div v-if="rutas.links" class="mt-4 flex justify-center">
+                            <nav class="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+                                <template v-for="(link, index) in rutas.links" :key="index">
+                                    <button
+                                        v-if="link.url"
+                                        @click="router.visit(link.url)"
+                                        :class="[
+                                            link.active ? 'bg-indigo-50 border-indigo-500 text-indigo-600' : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50',
+                                            index === 0 ? 'rounded-l-md' : '',
+                                            index === rutas.links.length - 1 ? 'rounded-r-md' : '',
+                                            'relative inline-flex items-center px-4 py-2 border text-sm font-medium'
+                                        ]"
+                                        v-html="link.label"
+                                    />
+                                    <span
+                                        v-else
+                                        :class="[
+                                            link.active ? 'bg-indigo-50 border-indigo-500 text-indigo-600' : 'bg-white border-gray-300 text-gray-500',
+                                            index === 0 ? 'rounded-l-md' : '',
+                                            index === rutas.links.length - 1 ? 'rounded-r-md' : '',
+                                            'relative inline-flex items-center px-4 py-2 border text-sm font-medium'
+                                        ]"
+                                        v-html="link.label"
+                                    />
+                                </template>
+                            </nav>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
-    </AuthenticatedLayout>
+    </AppLayout>
 </template>

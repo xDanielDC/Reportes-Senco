@@ -101,10 +101,16 @@ const logout = () => {
 
         <template #content>
             <div class="w-48">
+                <DropdownLink :href="route('rutas-tecnicas.index')"
+                              v-if="$page.props.auth.user.permissions?.some(p => p.startsWith('rutas-tecnicas.'))">
+                    <font-awesome-icon icon="fa-solid fa-list" class="mr-2"/>
+                    Mis Rutas Técnicas
+                </DropdownLink>
+
                 <DropdownLink :href="route('rutas-tecnicas.create')"
                               v-if="$page.props.auth.user.permissions?.some(p => p.startsWith('rutas-tecnicas.'))">
-                    <font-awesome-icon icon="fa-solid fa-screwdriver-wrench" class="mr-2"/>
-                    Rutas Técnicas
+                    <font-awesome-icon icon="fa-solid fa-plus" class="mr-2"/>
+                    Nueva Ruta Técnica
                 </DropdownLink>
 
                 <div class="border-t border-gray-200 my-1" />
