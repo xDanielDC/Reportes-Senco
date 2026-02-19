@@ -221,12 +221,12 @@ const eliminarRuta = (id) => {
                         </div>
 
                         <!-- Paginación -->
-                        <div v-if="rutas.links" class="mt-4 flex justify-center">
+                        <div v-if="rutas.links && rutas.links.length > 3" class="mt-4 flex justify-center">
                             <nav class="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
                                 <template v-for="(link, index) in rutas.links" :key="index">
                                     <button
                                         v-if="link.url"
-                                        @click="router.visit(link.url)"
+                                        @click="router.visit(link.url, { preserveState: true, preserveScroll: true })"
                                         :class="[
                                             link.active ? 'bg-indigo-50 border-indigo-500 text-indigo-600' : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50',
                                             index === 0 ? 'rounded-l-md' : '',
@@ -241,7 +241,7 @@ const eliminarRuta = (id) => {
                                             link.active ? 'bg-indigo-50 border-indigo-500 text-indigo-600' : 'bg-white border-gray-300 text-gray-500',
                                             index === 0 ? 'rounded-l-md' : '',
                                             index === rutas.links.length - 1 ? 'rounded-r-md' : '',
-                                            'relative inline-flex items-center px-4 py-2 border text-sm font-medium'
+                                            'relative inline-flex items-center px-4 py-2 border text-sm font-medium cursor-not-allowed opacity-50'
                                         ]"
                                         v-html="link.label"
                                     />

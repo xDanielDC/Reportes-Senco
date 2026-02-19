@@ -149,8 +149,10 @@ class RutaTecnicaController extends Controller
             [
                 'path' => \Illuminate\Pagination\Paginator::resolveCurrentPath(),
                 'pageName' => 'page',
+                'query' => $request->query(),
             ]
         );
+        $rutas->appends($request->query());
 
         return Inertia::render('RutasTecnicas/index', [
             'rutas' => $rutas,
