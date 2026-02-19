@@ -89,7 +89,7 @@ const logout = () => {
 
                                 <!-- Dropdown: Rutas Técnicas -->
                                 <div class="relative inline-flex items-center px-1 pt-1 border-b-2 border-transparent"
-                                     v-if="$page.props.auth.user.permissions?.some(p => p.startsWith('rutas-tecnicas.'))">
+                                     v-if="$page.props.auth.user.permissions?.includes('rutas-tecnicas.crear') || $page.props.auth.user.permissions?.includes('rutas-tecnicas.ver')">
                                     <Dropdown align="left" width="60">
                                         <template #trigger>
                                             <a href="javascript:void(0)"
@@ -102,12 +102,12 @@ const logout = () => {
                                         <template #content>
                                             <div class="w-48">
                                                 <DropdownLink :href="route('rutas-tecnicas.create')"
-                                                              v-if="$page.props.auth.user.permissions?.some(p => p.startsWith('rutas-tecnicas.'))">
+                                                              v-if="$page.props.auth.user.permissions?.includes('rutas-tecnicas.crear')">
                                                     <font-awesome-icon icon="fa-solid fa-plus" class="mr-2"/>
                                                     Nueva Ruta Técnica
                                                 </DropdownLink>
                                                 <DropdownLink :href="route('rutas-tecnicas.index')"
-                                                              v-if="$page.props.auth.user.permissions?.some(p => p.startsWith('rutas-tecnicas.'))">
+                                                              v-if="$page.props.auth.user.permissions?.includes('rutas-tecnicas.ver')">
                                                     <font-awesome-icon icon="fa-solid fa-list" class="mr-2"/>
                                                     Mis Rutas Técnicas
                                                 </DropdownLink>

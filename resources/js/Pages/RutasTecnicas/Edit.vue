@@ -54,6 +54,7 @@ const visitaForm = ref({
 
 const tecnicosAsociados = computed(() => props.technicalUsers || []);
 const tieneUnTecnico = computed(() => tecnicosAsociados.value.length === 1);
+const puedeEliminar = computed(() => page.props.auth?.user?.permissions?.includes('rutas-tecnicas.eliminar'));
 
 const puedeGuardar = computed(() => {
     return form.fecha_inicio && form.fecha_fin && form.visitas.length > 0;
@@ -225,6 +226,10 @@ const guardarVisita = () => {
 };
 
 const eliminarVisita = (index) => {
+    if (!puedeEliminar.value) {
+        alert('No tienes permisos para eliminar visitas.');
+        return;
+    }
     if (confirm('¿Está seguro de eliminar esta visita?')) {
         form.visitas.splice(index, 1);
     }
@@ -381,6 +386,7 @@ onMounted(() => {
                                                 type="button"
                                                 @click="eliminarVisita(index)"
                                                 class="text-red-600 hover:text-red-900"
+                                                v-if="puedeEliminar"
                                             >
                                                 Eliminar
                                             </button>

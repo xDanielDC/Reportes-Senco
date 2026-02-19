@@ -19,6 +19,7 @@ class RutaTecnicaController extends Controller
     {
         $this->middleware('permission:rutas-tecnicas.crear')->only(['create', 'store', 'buscarClientes', 'obtenerDirecciones']);
         $this->middleware('permission:rutas-tecnicas.ver')->only(['index', 'show']);
+        $this->middleware('permission:rutas-tecnicas.editar')->only(['edit', 'update']);
     }
 
     /**
@@ -56,7 +57,7 @@ class RutaTecnicaController extends Controller
             'crear' => $permissionNames->contains('rutas-tecnicas.crear'),
             'editar' => $permissionNames->contains('rutas-tecnicas.editar'),
             'eliminar' => $permissionNames->contains('rutas-tecnicas.eliminar'),
-            'ver' => $permissionNames->contains('rutas-tecnicas.ver') || $permissionNames->contains('rutas-tecnicas.crear')
+            'ver' => $permissionNames->contains('rutas-tecnicas.ver')
         ];
         
         // Determinar si el usuario puede ver todas las rutas o solo las propias
@@ -154,7 +155,8 @@ class RutaTecnicaController extends Controller
         $roleNames = $user->getRoleNames() ?? collect([]);
         $verTodasLasRutas = $permissionNames->contains('rutas-tecnicas.ver-todos') || 
                             $roleNames->contains('super-admin') ||
-                            $roleNames->contains('administrador') ||
+                            $roleNames->contains('AsistenteVentas') ||
+                            $roleNames->contains('Gerencia') ||
                             $roleNames->contains('admin') ||
                             $roleNames->contains('supervisor');
         
@@ -497,6 +499,7 @@ class RutaTecnicaController extends Controller
         $permissionNames = $user->permission_names ?? collect([]);
         $roleNames = $user->getRoleNames() ?? collect([]);
         $verTodasLasRutas = $permissionNames->contains('rutas-tecnicas.ver-todos') || 
+                            $permissionNames->contains('rutas-tecnicas.editar') ||
                             $roleNames->contains('super-admin') ||
                             $roleNames->contains('administrador') ||
                             $roleNames->contains('admin') ||
@@ -592,6 +595,7 @@ class RutaTecnicaController extends Controller
         $permissionNames = $user->permission_names ?? collect([]);
         $roleNames = $user->getRoleNames() ?? collect([]);
         $verTodasLasRutas = $permissionNames->contains('rutas-tecnicas.ver-todos') || 
+                            $permissionNames->contains('rutas-tecnicas.editar') ||
                             $roleNames->contains('super-admin') ||
                             $roleNames->contains('administrador') ||
                             $roleNames->contains('admin') ||

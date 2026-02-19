@@ -155,12 +155,13 @@ const table = {
                 <!-- Lista de Rutas con v-client-table -->
                 <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                     <div class="p-6">
-                        <v-client-table
-                            :columns="table.columns"
-                            :data="rutas"
-                            :options="table.options"
-                            class="overflow-y-auto"
-                        >
+                        <div class="overflow-x-auto">
+                            <v-client-table
+                                :columns="table.columns"
+                                :data="rutas"
+                                :options="table.options"
+                                class="min-w-max"
+                            >
                             <template v-slot:estado="{ row }">
                                 <span
                                     :class="row.cerrada ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'"
@@ -174,6 +175,7 @@ const table = {
                                 <div class="flex space-x-2">
                                     <!-- Ver Detalle -->
                                     <button
+                                        v-if="permisos.ver"
                                         @click="router.visit(route('rutas-tecnicas.show', row.NumeroRuta))"
                                         class="text-indigo-600 hover:text-indigo-900 text-sm font-medium"
                                     >
@@ -182,7 +184,7 @@ const table = {
                                     
                                     <!-- Editar - Solo si está abierta -->
                                     <button
-                                        v-if="!row.cerrada"
+                                        v-if="!row.cerrada && permisos.editar"
                                         @click="router.visit(route('rutas-tecnicas.edit', row.NumeroRuta))"
                                         class="text-yellow-600 hover:text-yellow-900 text-sm font-medium ml-2"
                                     >
@@ -190,7 +192,8 @@ const table = {
                                     </button>
                                 </div>
                             </template>
-                        </v-client-table>
+                            </v-client-table>
+                        </div>
                     </div>
                 </div>
             </div>
