@@ -63,8 +63,8 @@ class RutaTecnicaController extends Controller
         $roleNames = $user->getRoleNames() ?? collect([]);
         $verTodasLasRutas = $permissionNames->contains('rutas-tecnicas.ver-todos') || 
                             $roleNames->contains('super-admin') ||
-                            $roleNames->contains('administrador') ||
-                            $roleNames->contains('admin') ||
+                            $roleNames->contains('AsistenteVentas') ||
+                            $roleNames->contains('Gerencia') ||
                             $roleNames->contains('supervisor');
         
         // Validar que el usuario tenga código de vendedor si no es supervisor
