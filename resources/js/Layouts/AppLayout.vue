@@ -118,7 +118,7 @@ const logout = () => {
 
                                 <!-- Dropdown: Gestión de Clientes -->
                                 <div class="relative inline-flex items-center px-1 pt-1 border-b-2 border-transparent"
-                                     v-if="$page.props.auth.user.permissions?.some(p => p.startsWith('rutas-tecnicas.'))">
+                                     v-if="$page.props.auth.user.permissions?.includes('links-zeroOne')">
                                     <Dropdown align="left" width="60">
                                         <template #trigger>
                                             <a href="javascript:void(0)"
@@ -383,7 +383,7 @@ const logout = () => {
                             </ResponsiveNavLink>
                         </template>
 
-                        <template v-if="$page.props.auth.user.permissions?.some(p => p.startsWith('rutas-tecnicas.'))">
+                        <template v-if="$page.props.auth.user.permissions?.includes('links-zeroOne')">
                             <a
                                 href="https://zeroone.la/login"
                                 target="_blank"

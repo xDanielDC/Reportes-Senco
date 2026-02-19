@@ -250,26 +250,6 @@
                     </p>
                 </div>
 
-                <div class="mt-4">
-                    <InputLabel value="Permisos Disponibles"/>
-                    <div class="grid grid-cols-3 gap-5 mt-2">
-                        <div v-for="permission in permissions" class="flex items-center">
-                            <Checkbox v-model:checked="modal.form.permissions" :value="permission.name"/>
-                            <div class="ml-2">
-                                {{ permission.name }}
-                            </div>
-                        </div>
-                    </div>
-
-                    <template v-if="v$.form.permissions.$error">
-                        <ul class="mt-1">
-                            <li v-for="(error, index) of v$.form.permissions.$errors"
-                                :key="index" class="text-red-500">
-                                {{ error.$message }}
-                            </li>
-                        </ul>
-                    </template>
-                </div>
             </template>
 
             <template #footer>
@@ -306,10 +286,6 @@ const props = defineProps({
         default: []
     },
     roles: {
-        type: Array,
-        default: []
-    },
-    permissions: {
         type: Array,
         default: []
     },
@@ -371,7 +347,6 @@ const modal = reactive({
         change_password: false,
         password: '',
         reports: [],
-        permissions: [],
         roles: [],
         technical_users: []
     }
@@ -399,12 +374,8 @@ const rules = {
         reports: {
             minLength: minLength(1)
         },
-        permissions: {
-            requiredIf: requiredIf(modal.form.roles.length < 1),
-            minLength: minLength(1)
-        },
         roles: {
-            requiredIf: requiredIf(modal.form.permissions.length < 1),
+            required,
             minLength: minLength(1)
         },
     }
@@ -435,7 +406,6 @@ const closeModal = () => {
         change_password: false,
         password: '',
         reports: [],
-        permissions: [],
         roles: [],
         technical_users: []
     }

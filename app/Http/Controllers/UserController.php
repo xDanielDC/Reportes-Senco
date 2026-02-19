@@ -24,7 +24,6 @@ class UserController extends Controller
     {
         $users = User::with('reports', 'roles')->get();
         $roles = Role::all();
-        $permissions = Permission::all();
         $reports = Report::all();
         $technicalUsers = User::whereHas('roles', function ($query) {
             $query->whereRaw('LOWER(name) IN (?, ?)', ['tecnico', 'técnico']);
@@ -36,7 +35,6 @@ class UserController extends Controller
         return Inertia::render('Users/Index', [
             'users' => $users,
             'roles' => $roles,
-            'permissions' => $permissions,
             'reports' => $reports,
             'technicalUsers' => $technicalUsers,
         ]);
@@ -59,7 +57,6 @@ class UserController extends Controller
                 'password' => bcrypt($request->password),
         ]);
             $user->reports()->sync($request->reports);
-            $user->syncPermissions($request->permissions);
             $user->syncRoles($request->roles);
 
             $selectedRoles = collect($request->roles ?? [])->map(function ($role) {
@@ -124,7 +121,7 @@ class UserController extends Controller
 
             $user->save();
 
-            $user->syncPermissions($request->permissions);
+            $user->syncPermissions([]);
             $user->syncRoles($request->roles);
 
             $selectedRoles = collect($request->roles ?? [])->map(function ($role) {
@@ -229,7 +226,6 @@ class UserController extends Controller
             ->find($id);
 
         $roles = Role::all();
-        $permissions = Permission::all();
         $reports = Report::all();
         $filters = ReportFilter::all();
         $technicalUsers = User::whereHas('roles', function ($query) {
@@ -242,7 +238,6 @@ class UserController extends Controller
         return Inertia::render('Users/Show', [
             'user' => $user,
             'roles' => $roles,
-            'permissions' => $permissions,
             'reports' => $reports,
             'filters' => $filters,
             'technicalUsers' => $technicalUsers,

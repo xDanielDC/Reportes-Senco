@@ -209,26 +209,6 @@
                                     </div>
                                 </fieldset>
 
-                                <fieldset class="border rounded-lg p-4 col-span-3">
-                                    <legend>Permisos disponibles</legend>
-                                    <div class="grid grid-cols-5 gap-5">
-                                        <div class="flex items-center" v-for="permission in permissions">
-                                            <Checkbox v-model:checked="form.permissions" :value="permission.name"/>
-                                            <div class="ml-2">
-                                                {{ permission.name }}
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <template v-if="v$.form.permissions.$error">
-                                        <ul class="mt-1">
-                                            <li class="text-red-500"
-                                                v-for="(error, index) of v$.form.permissions.$errors" :key="index">
-                                                {{ error.$message }}
-                                            </li>
-                                        </ul>
-                                    </template>
-                                </fieldset>
                             </div>
 
                             <PrimaryButton @click="updateUser" class="mt-5">
@@ -423,7 +403,6 @@ export default {
     props: {
         user: Object,
         roles: Array,
-        permissions: Array,
         reports: Array,
         filters: Array,
         technicalUsers: Array
@@ -456,12 +435,8 @@ export default {
                 reports: {
                     minLength: minLength(1)
                 },
-                permissions: {
-                    requiredIf: requiredIf(this.form.roles.length < 1),
-                    minLength: minLength(1)
-                },
                 roles: {
-                    requiredIf: requiredIf(this.form.permissions.length < 1),
+                    required,
                     minLength: minLength(1)
                 },
             },
@@ -481,7 +456,6 @@ export default {
                 change_password: false,
                 password: '',
                 reports: [],
-                permissions: this.user.permissions.map(row => row.name),
                 roles: this.user.roles.map(row => row.name),
                 technical_users: (this.user.technical_users || [])
                     .map(row => Number(row.id)),
