@@ -70,10 +70,7 @@ class RutaTecnicaController extends Controller
         // Validar que el usuario tenga código de vendedor si no es supervisor
         if (!$verTodasLasRutas && !$codVendedor) {
             return Inertia::render('RutasTecnicas/index', [
-                'rutas' => [
-                    'data' => [],
-                    'links' => []
-                ],
+                'rutas' => [],
                 'filtros' => $request->only(['fecha_inicio', 'fecha_fin']),
                 'permisos' => $permisos,
                 'error' => 'Tu usuario no tiene un código de vendedor asignado. Contacta al administrador.'
@@ -134,28 +131,8 @@ class RutaTecnicaController extends Controller
             ];
         })->values();
 
-        // Paginar las rutas agrupadas manualmente
-        $perPage = 15;
-        $page = $request->get('page', 1);
-        $total = $rutasAgrupadas->count();
-        $rutasPagina = $rutasAgrupadas->forPage($page, $perPage);
-        
-        // Crear estructura de paginación
-        $rutas = new \Illuminate\Pagination\LengthAwarePaginator(
-            $rutasPagina,
-            $total,
-            $perPage,
-            $page,
-            [
-                'path' => \Illuminate\Pagination\Paginator::resolveCurrentPath(),
-                'pageName' => 'page',
-                'query' => $request->query(),
-            ]
-        );
-        $rutas->appends($request->query());
-
         return Inertia::render('RutasTecnicas/index', [
-            'rutas' => $rutas,
+            'rutas' => $rutasAgrupadas->values()->all(),
             'filtros' => $request->only(['fecha_inicio', 'fecha_fin']),
             'permisos' => $permisos
         ]);

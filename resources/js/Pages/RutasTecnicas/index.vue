@@ -1,12 +1,13 @@
 <script setup>
 import { ref } from 'vue';
 import { router } from '@inertiajs/vue3';
-import AuthenticatedLayout from '@/Layouts/AppLayout.vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 
-
 const props = defineProps({
-    rutas: Object,
+    rutas: {
+        type: Array,
+        default: () => []
+    },
     filtros: Object,
     permisos: {
         type: Object,
@@ -43,14 +44,36 @@ const limpiarFiltros = () => {
     aplicarFiltros();
 };
 
-const eliminarRuta = (id) => {
-    if (!props.permisos.eliminar) {
-        alert('No tienes permisos para eliminar rutas técnicas');
-        return;
-    }
-
-    if (confirm('¿Estás seguro de eliminar esta ruta técnica?')) {
-        router.delete(route('rutas-tecnicas.destroy', id));
+const table = {
+    columns: ['NumeroRuta', 'CodVendedor', 'FechaInicio', 'FechaFin', 'totalVisitas', 'estado', 'acciones'],
+    options: {
+        headings: {
+            NumeroRuta: 'Número Ruta',
+            CodVendedor: 'Cód. Vendedor',
+            FechaInicio: 'Fecha Inicio',
+            FechaFin: 'Fecha Fin',
+            totalVisitas: 'Visitas',
+            estado: 'Estado',
+            acciones: 'Acciones'
+        },
+        sortable: ['NumeroRuta', 'CodVendedor', 'FechaInicio', 'FechaFin', 'totalVisitas'],
+        filterable: ['NumeroRuta', 'CodVendedor', 'FechaInicio', 'FechaFin'],
+        perPage: 15,
+        perPageValues: [10, 15, 25, 50],
+        texts: {
+            count: 'Mostrando {from} a {to} de {count} rutas|{count} rutas|Una ruta',
+            first: 'Primera',
+            last: 'Última',
+            filter: 'Buscar:',
+            filterPlaceholder: 'Buscar...',
+            limit: 'Registros:',
+            page: 'Página:',
+            noResults: 'No hay rutas técnicas registradas',
+            filterBy: 'Filtrar por {column}',
+            loading: 'Cargando...',
+            defaultOption: 'Seleccionar {column}',
+            columns: 'Columnas'
+        }
     }
 };
 </script>
@@ -129,125 +152,45 @@ const eliminarRuta = (id) => {
                     </div>
                 </div>
 
-                <!-- Lista de Rutas -->
+                <!-- Lista de Rutas con v-client-table -->
                 <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                     <div class="p-6">
-                        <div v-if="!rutas?.data || rutas.data.length === 0" class="text-center py-8 text-gray-500">
-                            No hay rutas técnicas registradas
-                        </div>
+                        <v-client-table
+                            :columns="table.columns"
+                            :data="rutas"
+                            :options="table.options"
+                            class="overflow-y-auto"
+                        >
+                            <template v-slot:estado="{ row }">
+                                <span
+                                    :class="row.cerrada ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'"
+                                    class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
+                                >
+                                    {{ row.cerrada ? 'Cerrada' : 'Abierta' }}
+                                </span>
+                            </template>
 
-                        <div v-else class="overflow-x-auto">
-                            <table class="min-w-full divide-y divide-gray-200">
-                                <thead class="bg-gray-50">
-                                    <tr>
-                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                            Número Ruta
-                                        </th>
-                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                            Código Vendedor
-                                        </th>
-                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                            Fecha Inicio
-                                        </th>
-                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                            Fecha Fin
-                                        </th>
-                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                            Visitas
-                                        </th>
-                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                            Estado
-                                        </th>
-                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                            Acciones
-                                        </th>
-                                    </tr>
-                                </thead>
-                                <tbody class="bg-white divide-y divide-gray-200">
-                                    <tr v-for="ruta in rutas.data" :key="ruta.NumeroRuta">
-                                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                                            {{ ruta.NumeroRuta }}
-                                        </td>
-                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                            {{ ruta.CodVendedor }}
-                                        </td>
-                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                            {{ ruta.FechaInicio }}
-                                        </td>
-                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                            {{ ruta.FechaFin }}
-                                        </td>
-                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                            {{ ruta.totalVisitas }}
-                                        </td>
-                                        <td class="px-6 py-4 whitespace-nowrap">
-                                            <span 
-                                                :class="ruta.cerrada ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'"
-                                                class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
-                                            >
-                                                {{ ruta.cerrada ? 'Cerrada' : 'Abierta' }}
-                                            </span>
-                                        </td>
-                                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                                            <!-- Ver Detalle -->
-                                            <button
-                                                @click="router.visit(route('rutas-tecnicas.show', ruta.NumeroRuta))"
-                                                class="text-indigo-600 hover:text-indigo-900"
-                                            >
-                                                Ver
-                                            </button>
-                                            
-                                            <!-- XXX Visitas - Solo si está abierta -->
-                                            <button
-                                                v-if="!ruta.cerrada"
-                                                @click="router.visit(route('rutas-tecnicas.show', ruta.NumeroRuta))"
-                                                class="text-green-600 hover:text-green-900 ml-2"
-                                            >
-                                                
-                                            </button>
-                                            
-                                            <!-- Editar - Solo si está abierta -->
-                                            <button
-                                                v-if="!ruta.cerrada"
-                                                @click="router.visit(route('rutas-tecnicas.edit', ruta.NumeroRuta))"
-                                                class="text-yellow-600 hover:text-yellow-900 ml-2"
-                                            >
-                                                Editar
-                                            </button>
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-
-                        <!-- Paginación -->
-                        <div v-if="rutas.links && rutas.links.length > 3" class="mt-4 flex justify-center">
-                            <nav class="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
-                                <template v-for="(link, index) in rutas.links" :key="index">
+                            <template v-slot:acciones="{ row }">
+                                <div class="flex space-x-2">
+                                    <!-- Ver Detalle -->
                                     <button
-                                        v-if="link.url"
-                                        @click="router.get(link.url, {}, { preserveState: true, preserveScroll: true })"
-                                        :class="[
-                                            link.active ? 'bg-indigo-50 border-indigo-500 text-indigo-600' : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50',
-                                            index === 0 ? 'rounded-l-md' : '',
-                                            index === rutas.links.length - 1 ? 'rounded-r-md' : '',
-                                            'relative inline-flex items-center px-4 py-2 border text-sm font-medium'
-                                        ]"
-                                        v-html="link.label"
-                                    />
-                                    <span
-                                        v-else
-                                        :class="[
-                                            link.active ? 'bg-indigo-50 border-indigo-500 text-indigo-600' : 'bg-white border-gray-300 text-gray-500',
-                                            index === 0 ? 'rounded-l-md' : '',
-                                            index === rutas.links.length - 1 ? 'rounded-r-md' : '',
-                                            'relative inline-flex items-center px-4 py-2 border text-sm font-medium cursor-not-allowed opacity-50'
-                                        ]"
-                                        v-html="link.label"
-                                    />
-                                </template>
-                            </nav>
-                        </div>
+                                        @click="router.visit(route('rutas-tecnicas.show', row.NumeroRuta))"
+                                        class="text-indigo-600 hover:text-indigo-900 text-sm font-medium"
+                                    >
+                                        Ver
+                                    </button>
+                                    
+                                    <!-- Editar - Solo si está abierta -->
+                                    <button
+                                        v-if="!row.cerrada"
+                                        @click="router.visit(route('rutas-tecnicas.edit', row.NumeroRuta))"
+                                        class="text-yellow-600 hover:text-yellow-900 text-sm font-medium ml-2"
+                                    >
+                                        Editar
+                                    </button>
+                                </div>
+                            </template>
+                        </v-client-table>
                     </div>
                 </div>
             </div>
