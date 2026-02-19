@@ -226,7 +226,7 @@ const eliminarRuta = (id) => {
                                 <template v-for="(link, index) in rutas.links" :key="index">
                                     <button
                                         v-if="link.url"
-                                        @click="router.visit(link.url, { preserveState: true, preserveScroll: true })"
+                                        @click="router.get(link.url, {}, { preserveState: true, preserveScroll: true })"
                                         :class="[
                                             link.active ? 'bg-indigo-50 border-indigo-500 text-indigo-600' : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50',
                                             index === 0 ? 'rounded-l-md' : '',
