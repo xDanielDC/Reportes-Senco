@@ -354,11 +354,18 @@ const logout = () => {
 
                         <template v-if="$page.props.auth.user.permissions?.some(p => p.startsWith('rutas-tecnicas.'))">
                             <ResponsiveNavLink
-                                :href="route('rutas-tecnicas.create')"
-                                :active="route().current('rutas-tecnicas.*')"
+                                :href="route('rutas-tecnicas.index')"
+                                :active="route().current('rutas-tecnicas.index')"
                             >
-                                <font-awesome-icon icon="fa-solid fa-screwdriver-wrench" class="mr-2"/>
-                                Rutas Técnicas
+                                <font-awesome-icon icon="fa-solid fa-list" class="mr-2"/>
+                                Mis Rutas Técnicas
+                            </ResponsiveNavLink>
+                            <ResponsiveNavLink
+                                :href="route('rutas-tecnicas.create')"
+                                :active="route().current('rutas-tecnicas.create')"
+                            >
+                                <font-awesome-icon icon="fa-solid fa-plus" class="mr-2"/>
+                                Nueva Ruta Técnica
                             </ResponsiveNavLink>
                         </template>
 
