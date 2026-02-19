@@ -18,6 +18,7 @@ class RutaTecnicaController extends Controller
     public function __construct()
     {
         $this->middleware('permission:rutas-tecnicas.crear')->only(['create', 'store', 'buscarClientes', 'obtenerDirecciones']);
+        $this->middleware('permission:rutas-tecnicas.ver')->only(['index', 'show']);
     }
 
     /**
