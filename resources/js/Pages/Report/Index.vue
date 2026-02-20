@@ -40,6 +40,9 @@
                             </CustomButton>
                         </div>
                     </template>
+                    <template v-slot:updated_at="{row}">
+                        {{ formatearFecha(row.updated_at) }}
+                    </template>
                 </v-client-table>
             </div>
         </div>
@@ -326,6 +329,19 @@ const destroy = (id) => {
         }
     })
 }
-
+const formatearFecha = (fecha) => {
+    if (!fecha) return '';
+    const fechaUTC = fecha.replace(' ', 'T') + 'Z';
+    return new Date(fechaUTC).toLocaleString('es-CO', {
+        timeZone: 'America/Bogota',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true
+    });
+}
 </script>
 

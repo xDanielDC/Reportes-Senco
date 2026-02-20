@@ -30,8 +30,8 @@ class Report extends Model
      * @var string[]
      */
     protected $casts = [
-        'created_at' => 'datetime:Y-m-d h:i:s A',
-        'updated_at' => 'datetime:Y-m-d h:i:s A',
+        'created_at' => 'datetime:Y-m-d H:i:s',
+        'updated_at' => 'datetime:Y-m-d H:i:s',
         'expiration_date' => 'datetime'
     ];
 
