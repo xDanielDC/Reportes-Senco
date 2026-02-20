@@ -133,12 +133,12 @@ class RutaTecnica extends Model
      * Cerrar la ruta
      */
     public function cerrar(): bool
-    {
-        return $this->update([
-            'cerrada' => true,
-            'fecha_cierre' => Carbon::now()
-        ]);
-    }
+{
+    return $this->update([
+        'cerrada' => true,
+        'fecha_cierre' => Carbon::now()->format('Y-m-d H:i:s')
+    ]);
+}
 
     /**
      * Obtener el estado de la ruta (abierta/cerrada)
