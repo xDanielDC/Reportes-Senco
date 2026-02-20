@@ -28,7 +28,7 @@ class RutasTecnicasPermissionsSeeder extends Seeder
         foreach ($permissions as $permission) {
             Permission::firstOrCreate(
                 ['name' => $permission],
-                ['guard_name' => 'web']
+                ['guard_name' => 'sanctum'] // Ajusta el guard_name según tu configuración
             );
         }
 

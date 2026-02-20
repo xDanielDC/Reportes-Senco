@@ -8,43 +8,37 @@ use Spatie\Permission\Models\Role;
 
 class LinksZeroOnePermissionSeeder extends Seeder
 {
-    /**
-     * Run the database seeds.
-     */
     public function run(): void
     {
         $permissionName = 'links-zeroOne';
+        $guard = 'sanctum'; // siempre minúscula, consistente
 
-        // Crear el permiso para el guard web (UI)
-        Permission::firstOrCreate(
-            ['name' => $permissionName, 'guard_name' => 'web']
-        );
-        $this->command->info('✅ Permiso "links-zeroOne" creado para guard web');
+        // 1️⃣ Crear el permiso
+        Permission::firstOrCreate([
+            'name' => $permissionName,
+            'guard_name' => $guard,
+        ]);
+        $this->command->info("✅ Permiso '{$permissionName}' creado para guard {$guard}");
 
-        // Roles con acceso (ajusta segun tus roles)
+        // 2️⃣ Roles con acceso
         $rolesConAcceso = ['super-admin'];
 
         foreach ($rolesConAcceso as $roleName) {
-            $role = Role::where('name', $roleName)->first();
+            // Crear el rol si no existe
+            $role = Role::firstOrCreate([
+                'name' => $roleName,
+                'guard_name' => $guard,
+            ]);
 
-            if ($role) {
-                // Asegurar permiso para el guard del rol (sanctum/web, etc.)
-                Permission::firstOrCreate(
-                    ['name' => $permissionName, 'guard_name' => $role->guard_name]
-                );
-
-                if (!$role->hasPermissionTo($permissionName, $role->guard_name)) {
-                    $role->givePermissionTo($permissionName);
-                    $this->command->info("✅ Permiso asignado al rol: {$roleName}");
-                } else {
-                    $this->command->warn("⚠️  El rol {$roleName} ya tiene el permiso");
-                }
+            // 3️⃣ Asignar permiso al rol
+            if (!$role->hasPermissionTo($permissionName, $guard)) {
+                $role->givePermissionTo($permissionName);
+                $this->command->info("✅ Permiso asignado al rol: {$roleName}");
             } else {
-                $this->command->error("❌ Rol no encontrado: {$roleName}");
+                $this->command->warn("⚠️ El rol {$roleName} ya tiene el permiso");
             }
         }
 
-        $this->command->info('');
-        $this->command->info('✅ Configuracion de permisos completada');
+        $this->command->info('✅ Configuración de permisos completada');
     }
 }

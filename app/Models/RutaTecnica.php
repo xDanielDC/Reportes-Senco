@@ -12,7 +12,7 @@ class RutaTecnica extends Model
     protected $table = 'RT_rutastecnicas';
     public $incrementing = true;
     protected $keyType = 'int';
-    protected $primaryKey = 'idVisita';
+    protected $primaryKey = 'IdVisita';
     public $timestamps = false;
 
     protected $fillable = [
@@ -120,20 +120,14 @@ class RutaTecnica extends Model
      * Se cierra si es viernes después de las 2pm (sin importar la fecha fin)
      */
     public function debeCerrarse(): bool
-    {
-        // Si ya está cerrada, no necesita cerrarse
-        if ($this->cerrada) {
-            return false;
-        }
-
-        $ahora = Carbon::now();
-        $diaSemana = $ahora->dayOfWeek; // 5 = Friday
-        $hora = $ahora->hour;
-
-        // Verificar si es viernes después de las 14:00 (2pm)
-        // La ruta se cierra el viernes a las 2pm para que se asigne al técnico
-        return ($diaSemana === Carbon::FRIDAY && $hora >= 14);
+{
+    if ($this->cerrada) {
+        return false;
     }
+
+    $ahora = Carbon::now();
+    return ($ahora->dayOfWeek === Carbon::FRIDAY && $ahora->hour >= 15);
+}
 
     /**
      * Cerrar la ruta

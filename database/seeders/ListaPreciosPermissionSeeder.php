@@ -16,13 +16,13 @@ class ListaPreciosPermissionSeeder extends Seeder
         // Crear el permiso
         $permission = Permission::firstOrCreate(
             ['name' => 'ver-lista-precios'],
-            ['guard_name' => 'web']
+            ['guard_name' => 'sanctum']
         );
 
         $this->command->info('✅ Permiso "ver-lista-precios" creado');
 
         // Roles que deben tener acceso
-        $rolesConAcceso = ['Asesor', 'super-admin'];
+        $rolesConAcceso = ['super-admin'];
 
         foreach ($rolesConAcceso as $roleName) {
             $role = Role::where('name', $roleName)->first();
