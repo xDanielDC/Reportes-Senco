@@ -134,10 +134,13 @@ class RutaTecnica extends Model
      */
     public function cerrar(): bool
 {
-    return $this->update([
-        'cerrada' => true,
-        'fecha_cierre' => Carbon::now()->format('Y-m-d H:i:s')
-    ]);
+    return DB::connection('senco360')
+        ->table('RT_rutastecnicas')
+        ->where('IdVisita', $this->IdVisita)
+        ->update([
+            'cerrada' => 1,
+            'fecha_cierre' => DB::raw('GETDATE()')
+        ]);
 }
 
     /**
