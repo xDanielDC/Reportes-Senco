@@ -187,6 +187,7 @@ Route::middleware(['auth:sanctum', config('jetstream.auth_session'), 'verified']
         // API endpoints para búsquedas
         Route::get('/api/clientes/buscar', [RutaTecnicaController::class, 'buscarClientes'])->name('buscar-clientes');
         Route::get('/api/clientes/{clienteId}/direcciones', [RutaTecnicaController::class, 'obtenerDirecciones'])->name('direcciones');
+        Route::get('/api/clientes/{clienteId}/contacto-recomendado', [RutaTecnicaController::class, 'obtenerDatosContactoRecomendados'])->name('contacto-recomendado');
     });
 
 });

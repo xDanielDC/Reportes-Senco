@@ -1,9 +1,11 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue';
 import { useForm, usePage } from '@inertiajs/vue3';
+import axios from 'axios';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import BuscadorClientes from '@/Components/RutasTecnicas/BuscadorClientes.vue';
 import SelectorDireccion from '@/Components/RutasTecnicas/SelectorDireccion.vue';
+import SugResultadoContactos from '@/Components/RutasTecnicas/SugResultadoContactos.vue';
 
 const page = usePage();
 
@@ -67,6 +69,35 @@ const prepararTecnicoPorDefecto = () => {
         visitaForm.value.tecnico_nombre = tecnico.name;
         visitaForm.value.cod_tecnico = tecnico.codigo_vendedor;
     }
+};
+
+// Verificar si el asesor actual puede usar "Taller Senco"
+const asesoresToaller = ['097', '070', '094'];
+const puedeUsarTaller = computed(() => {
+    const userCodVendedor = page.props.auth?.user?.codigo_vendedor || '';
+    return asesoresToaller.includes(userCodVendedor);
+});
+
+const usarTallerSenco = () => {
+    clienteSeleccionado.value = {
+        ClienteId: '8110008316',
+        Nit: '8110008316',
+        NombreCliente: 'Taller Senco',
+        CodAsesor: page.props.auth?.user?.codigo_vendedor || ''
+    };
+    visitaForm.value.cliente_id = '8110008316';
+    visitaForm.value.nit = '8110008316';
+    visitaForm.value.nombre_cliente = 'Taller Senco';
+    visitaForm.value.cod_asesor = page.props.auth?.user?.codigo_vendedor || '';
+    
+    // Establecer automáticamente la dirección de Senco
+    direccionSeleccionada.value = {
+        DireccionId: 'TALLER-SENCO-LA',
+        DireccionCompleta: 'Autopista Medellín-Bogotá #Km 38, Marinilla, Antioquia',
+        NombreContacto: ''
+    };
+    visitaForm.value.direccion_id = 'TALLER-SENCO-LA';
+    visitaForm.value.direccion_completa = 'Autopista Medellín-Bogotá #Km 38, Marinilla, Antioquia';
 };
 
 const tecnicoSeleccionadoActual = computed(() => {
@@ -427,7 +458,19 @@ onMounted(() => {
                         <!-- Buscador de Cliente -->
                         <div class="mb-4">
                             <label class="block text-sm font-medium text-gray-700 mb-2">Cliente</label>
-                            <BuscadorClientes @seleccionar="seleccionarCliente" />
+                            <div class="flex gap-2">
+                                <div class="flex-1">
+                                    <BuscadorClientes @seleccionar="seleccionarCliente" />
+                                </div>
+                                <button
+                                    v-if="puedeUsarTaller"
+                                    @click="usarTallerSenco"
+                                    type="button"
+                                    class="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 whitespace-nowrap"
+                                >
+                                    Usar Taller Senco
+                                </button>
+                            </div>
                         </div>
 
                         <!-- Selector de Dirección -->
@@ -465,22 +508,13 @@ onMounted(() => {
                         </div>
 
                         <div class="mb-4">
-                            <label class="block text-sm font-medium text-gray-700 mb-2">Contacto</label>
-                            <input
-                                type="text"
-                                v-model="visitaForm.nom_contacto"
-                                placeholder="Nombre del contacto"
-                                class="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                            />
-                        </div>
-
-                        <div class="mb-4">
-                            <label class="block text-sm font-medium text-gray-700 mb-2">Teléfono</label>
-                            <input
-                                type="text"
-                                v-model="visitaForm.tel_contacto"
-                                placeholder="Teléfono de contacto"
-                                class="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                            <SugResultadoContactos
+                                :model-value-nombre="visitaForm.nom_contacto"
+                                :model-value-telefono="visitaForm.tel_contacto"
+                                :cliente-id="visitaForm.nit"
+                                :direccion="visitaForm.direccion_completa"
+                                @update:model-value-nombre="visitaForm.nom_contacto = $event"
+                                @update:model-value-telefono="visitaForm.tel_contacto = $event"
                             />
                         </div>
 

@@ -684,4 +684,69 @@ class RutaTecnicaController extends Controller
         return redirect()->route('rutas-tecnicas.show', $numeroRuta)
             ->with('success', 'Ruta técnica actualizada correctamente.');
     }
+
+    /**
+     * API: Obtener sugerencias de contactos de una dirección específica
+     * Retorna los últimos contactos registrados para esa dirección
+     */
+    public function obtenerDatosContactoRecomendados($clienteId, \Illuminate\Http\Request $request)
+    {
+        try {
+            $direccion = $request->query('direccion');
+            
+            if (!$direccion) {
+                return response()->json([
+                    'sugerencias' => []
+                ]);
+            }
+            
+            // Buscar los últimos 10 registros de contactos para esta dirección específica
+            $visitas = RutaTecnica::where('Nit', trim($clienteId))
+                ->where('DireccionCompleta', 'like', '%' . trim($direccion) . '%')
+                ->where(function($q) {
+                    $q->whereNotNull('NomContacto')
+                      ->orWhereNotNull('TelContacto');
+                })
+                ->orderBy('FechaVisita', 'desc')
+                ->orderBy('IdVisita', 'desc')
+                ->limit(10)
+                ->get(['NomContacto', 'TelContacto', 'FechaVisita']);
+
+            // Agrupar por combinación de nombre y teléfono para eliminar duplicados
+            $sugereciasUnicas = [];
+            $vistas = [];
+            
+            foreach ($visitas as $visita) {
+                $key = md5($visita->NomContacto . $visita->TelContacto);
+                
+                if (!isset($vistas[$key])) {
+                    $vistas[$key] = true;
+                    $sugereciasUnicas[] = [
+                        'nomContacto' => $visita->NomContacto,
+                        'telContacto' => $visita->TelContacto,
+                        'fechaVisita' => $visita->FechaVisita ? \Carbon\Carbon::parse($visita->FechaVisita)->format('Y-m-d') : null,
+                        'label' => ($visita->NomContacto ? $visita->NomContacto : '') . 
+                                  ($visita->TelContacto ? ' - ' . $visita->TelContacto : '') .
+                                  ($visita->FechaVisita ? ' (' . \Carbon\Carbon::parse($visita->FechaVisita)->format('d/m/Y') . ')' : '')
+                    ];
+                }
+            }
+
+            return response()->json([
+                'sugerencias' => $sugereciasUnicas
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error al obtener contactos recomendados', [
+                'nit' => $clienteId,
+                'direccion' => $request->query('direccion'),
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json([
+                'error' => 'Error al obtener datos de contacto',
+                'message' => $e->getMessage()
+            ], 500);
+        }
+    }
 }
