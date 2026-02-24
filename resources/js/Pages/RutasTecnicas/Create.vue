@@ -501,17 +501,23 @@ const cerrarNotificacion = () => {
                             <div class="mb-4">
                                 <label class="block text-sm font-medium text-gray-700 mb-2">Buscar Cliente *</label>
                                 <div class="flex gap-2">
-                                    <div class="flex-1">
+                                    <div class="flex-1 relative">
                                         <BuscadorClientes @seleccionar="seleccionarCliente" />
+
+                                        <!-- Botón compacto embebido en el buscador -->
+                                        <button
+                                            v-if="puedeUsarTaller"
+                                            @click="usarTallerSenco"
+                                            type="button"
+                                            title="Usar Taller Senco"
+                                            aria-label="Usar Taller Senco"
+                                            class="absolute right-2 top-1/2 -translate-y-1/2 flex items-center justify-center px-2 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-300"
+                                        >
+                                            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+                                                <path d="M3 7l7-4 7 4v6a1 1 0 01-1 1h-1v-3l-3 2-3-2v3H4a1 1 0 01-1-1V7z" />
+                                            </svg>
+                                        </button>
                                     </div>
-                                    <button
-                                        v-if="puedeUsarTaller"
-                                        @click="usarTallerSenco"
-                                        type="button"
-                                        class="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 whitespace-nowrap"
-                                    >
-                                        Usar Taller Senco
-                                    </button>
                                 </div>
                             </div>
 
