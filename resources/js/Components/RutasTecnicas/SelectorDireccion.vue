@@ -30,15 +30,35 @@ const cargarDirecciones = async (clienteId) => {
     try {
         const response = await axios.get(route('rutas-tecnicas.direcciones', clienteId));
         direcciones.value = response.data;
-        
+
         console.log('Direcciones cargadas:', response.data); // Debug
-        
-        // Si solo hay una dirección, seleccionarla automáticamente
-        if (direcciones.value.length === 1) {
-            seleccionar(direcciones.value[0]);
+
+        // Si el cliente es el Taller Senco (ClienteId 8110008316), agregar una dirección especial
+        if (String(clienteId) === '8110008316') {
+            const sencoDireccion = {
+                DireccionId: 'TALLER-SENCO-LA',
+                DireccionCompleta: 'Autopista Medellín-Bogotá #Km 38, Marinilla, Antioquia',
+                Sede: 'Taller Senco',
+                Ciudad: 'Marinilla',
+                Departamento: 'Antioquia',
+                NombreContacto: ''
+            };
+
+            const exists = direcciones.value.find(d => String(d.DireccionId) === sencoDireccion.DireccionId);
+            if (!exists) {
+                direcciones.value.unshift(sencoDireccion);
+            }
+
+            // Seleccionar explícitamente la dirección Senco
+            seleccionar(direcciones.value.find(d => String(d.DireccionId) === sencoDireccion.DireccionId));
         } else {
-            // Limpiar selección si hay múltiples direcciones
-            direccionSeleccionada.value = null;
+            // Si solo hay una dirección, seleccionarla automáticamente
+            if (direcciones.value.length === 1) {
+                seleccionar(direcciones.value[0]);
+            } else {
+                // Limpiar selección si hay múltiples direcciones
+                direccionSeleccionada.value = null;
+            }
         }
     } catch (err) {
         console.error('Error al cargar direcciones:', err);
