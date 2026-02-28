@@ -88,8 +88,30 @@ class RutaTecnicaController extends Controller
 
         // Construir consulta base - obtener todas las visitas sin paginar para agrupar
         $query = RutaTecnica::query()
-            ->when(!$verTodasLasRutas, function ($q) use ($codVendedor) {
-                return $q->where('CodVendedor', trim($codVendedor));
+            ->when(!$verTodasLasRutas, function ($q) use ($user, $codVendedor) {
+                // Obtener técnicos que comparten con este usuario
+                $codigosTecnicos = [];
+                try {
+                    $codigosTecnicos = $user->technicalUsers()
+                        ->whereHas('roles', function ($roleQuery) {
+                            $roleQuery->whereRaw('LOWER(name) IN (?, ?)', ['tecnico', 'técnico']);
+                        })
+                        ->whereNotNull('codigo_vendedor')
+                        ->pluck('codigo_vendedor')
+                        ->map(fn($codigo) => trim($codigo))
+                        ->all();
+                } catch (\Exception $e) {
+                    // Si hay error, es array vacío
+                }
+                
+                // Mostrar rutas propias O rutas de técnicos compartidos
+                return $q->where(function ($subQuery) use ($codVendedor, $codigosTecnicos) {
+                    $subQuery->where('CodVendedor', trim($codVendedor));
+                    
+                    if (!empty($codigosTecnicos)) {
+                        $subQuery->orWhereIn('CodTecnico', $codigosTecnicos);
+                    }
+                });
             })
             ->orderBy('FechaInicio', 'desc')
             ->orderBy('NumeroRuta', 'desc')
@@ -144,51 +166,67 @@ class RutaTecnicaController extends Controller
      * Mostrar detalles de una ruta técnica específica
      */
     public function show($numeroRuta)
-    {
-        $user = Auth::user();
-        $codVendedor = $user->codigo_vendedor;
-        
-        // Verificar permisos
-        $permissionNames = $user->permission_names ?? collect([]);
-        
-        // Determinar si el usuario puede ver todas las rutas o solo las propias
-        $roleNames = $user->getRoleNames() ?? collect([]);
-        $verTodasLasRutas = $permissionNames->contains('rutas-tecnicas.ver-todos') || 
-                            $roleNames->contains('super-admin') ||
-                            $roleNames->contains('AsistenteVentas') ||
-                            $roleNames->contains('Gerencia') ||
-                            $roleNames->contains('admin') ||
-                            $roleNames->contains('supervisor');
-        
-        if (!$verTodasLasRutas && !$codVendedor) {
-            return redirect()->route('rutas-tecnicas.index')
-                ->with('error', 'Tu usuario no tiene un código de vendedor asignado.');
-        }
+{
+    $user = Auth::user();
+    $codVendedor = $user->codigo_vendedor;
+    
+    $permissionNames = $user->permission_names ?? collect([]);
+    $roleNames = $user->getRoleNames() ?? collect([]);
+    $verTodasLasRutas = $permissionNames->contains('rutas-tecnicas.ver-todos') || 
+                        $roleNames->contains('super-admin') ||
+                        $roleNames->contains('AsistenteVentas') ||
+                        $roleNames->contains('Gerencia') ||
+                        $roleNames->contains('admin') ||
+                        $roleNames->contains('supervisor');
 
-        // Buscar la ruta por número de ruta y código de vendedor
-        $visitasQuery = RutaTecnica::where('NumeroRuta', $numeroRuta)
-            ->when(!$verTodasLasRutas, function ($q) use ($codVendedor) {
-                return $q->where('CodVendedor', trim($codVendedor));
+    // Verificar que la ruta existe
+    $rutaExiste = RutaTecnica::where('NumeroRuta', $numeroRuta)->exists();
+    if (!$rutaExiste) {
+        return redirect()->route('rutas-tecnicas.index')
+            ->with('error', 'Ruta técnica no encontrada.');
+    }
+
+    // Si no es admin, verificar que tiene acceso a esta ruta
+    if (!$verTodasLasRutas) {
+        $codigosTecnicos = [];
+        try {
+            $codigosTecnicos = $user->technicalUsers()
+                ->whereHas('roles', function ($q) {
+                    $q->whereRaw('LOWER(name) IN (?, ?)', ['tecnico', 'técnico']);
+                })
+                ->whereNotNull('codigo_vendedor')
+                ->pluck('codigo_vendedor')
+                ->map(fn($codigo) => trim($codigo))
+                ->all();
+        } catch (\Exception $e) {}
+
+        // Tiene acceso si la ruta es propia O si comparte técnico
+        $tieneAcceso = RutaTecnica::where('NumeroRuta', $numeroRuta)
+            ->where(function ($q) use ($codVendedor, $codigosTecnicos) {
+                $q->where('CodVendedor', trim($codVendedor));
+                if (!empty($codigosTecnicos)) {
+                    $q->orWhereIn('CodTecnico', $codigosTecnicos);
+                }
             })
-            ->orderBy('FechaVisita', 'asc');
-        
-        // Obtener las visitas sin formatear para verificar existencia
-        $visitasCount = (clone $visitasQuery)->count();
-        
-        if ($visitasCount === 0) {
+            ->exists();
+
+        if (!$tieneAcceso) {
             return redirect()->route('rutas-tecnicas.index')
-                ->with('error', 'Ruta técnica no encontrada.');
+                ->with('error', 'No tienes acceso a esta ruta técnica.');
         }
-        
-        // Obtener y formatear las visitas
-        $visitas = $visitasQuery->get()->map(function ($visita) {
+    }
+
+    // Obtener TODAS las visitas de la ruta sin filtrar por CodVendedor
+    $visitas = RutaTecnica::where('NumeroRuta', $numeroRuta)
+        ->orderBy('FechaVisita', 'asc')
+        ->get()
+        ->map(function ($visita) {
             $fechaVisita = $visita->FechaVisita;
             if (is_string($fechaVisita)) {
                 $fechaVisita = \Carbon\Carbon::parse($fechaVisita);
             }
-            
             return [
-                'idVisita' => $visita->idVisita,
+                'idVisita' => $visita->IdVisita,
                 'NumeroRuta' => $visita->NumeroRuta,
                 'Nit' => $visita->Nit,
                 'NombreCliente' => $visita->NombreCliente,
@@ -202,36 +240,28 @@ class RutaTecnicaController extends Controller
             ];
         });
 
-        $primeraVisita = $visitas->first();
-        
-        // Obtener la primera visita cruda para las fechas de la ruta
-        $visitaRaw = RutaTecnica::where('NumeroRuta', $numeroRuta)
-            ->when(!$verTodasLasRutas, function ($q) use ($codVendedor) {
-                return $q->where('CodVendedor', trim($codVendedor));
-            })
-            ->orderBy('FechaInicio', 'desc')
-            ->first();
-        
-        $fechaInicio = $visitaRaw->FechaInicio;
-        if (is_string($fechaInicio)) {
-            $fechaInicio = \Carbon\Carbon::parse($fechaInicio);
-        }
-        $fechaFin = $visitaRaw->FechaFin;
-        if (is_string($fechaFin)) {
-            $fechaFin = \Carbon\Carbon::parse($fechaFin);
-        }
-        
-        return Inertia::render('RutasTecnicas/Show', [
-            'ruta' => [
-                'NumeroRuta' => $numeroRuta,
-                'FechaInicio' => $this->formatearFecha($fechaInicio),
-                'FechaFin' => $this->formatearFecha($fechaFin),
-                'CodVendedor' => $primeraVisita['CodVendedor'],
-                'cerrada' => $visitaRaw->cerrada ?? false,
-                'visitas' => $visitas,
-            ]
-        ]);
-    }
+    $visitaRaw = RutaTecnica::where('NumeroRuta', $numeroRuta)
+        ->orderBy('FechaInicio', 'desc')
+        ->first();
+
+    $fechaInicio = is_string($visitaRaw->FechaInicio) 
+        ? \Carbon\Carbon::parse($visitaRaw->FechaInicio) 
+        : $visitaRaw->FechaInicio;
+    $fechaFin = is_string($visitaRaw->FechaFin) 
+        ? \Carbon\Carbon::parse($visitaRaw->FechaFin) 
+        : $visitaRaw->FechaFin;
+
+    return Inertia::render('RutasTecnicas/Show', [
+        'ruta' => [
+            'NumeroRuta' => $numeroRuta,
+            'FechaInicio' => $this->formatearFecha($fechaInicio),
+            'FechaFin' => $this->formatearFecha($fechaFin),
+            'CodVendedor' => $visitaRaw->CodVendedor,
+            'cerrada' => $visitaRaw->cerrada ?? false,
+            'visitas' => $visitas,
+        ]
+    ]);
+}
 
     /**
      * Mostrar formulario de creación
@@ -241,11 +271,33 @@ class RutaTecnicaController extends Controller
         $user = Auth::user();
         $codVendedor = $user->codigo_vendedor;
         
-        // Verificar si hay rutas abiertas para este vendedor
+        // Verificar si hay rutas abiertas (propias o compartidas con técnicos)
         $rutaAbierta = null;
         if ($codVendedor) {
-            $rutaAbierta = RutaTecnica::where('CodVendedor', trim($codVendedor))
-                ->where('cerrada', false)
+            // Obtener técnicos que comparten con este usuario
+            $codigosTecnicos = [];
+            try {
+                $codigosTecnicos = $user->technicalUsers()
+                    ->whereHas('roles', function ($query) {
+                        $query->whereRaw('LOWER(name) IN (?, ?)', ['tecnico', 'técnico']);
+                    })
+                    ->whereNotNull('codigo_vendedor')
+                    ->pluck('codigo_vendedor')
+                    ->map(fn($codigo) => trim($codigo))
+                    ->all();
+            } catch (\Exception $e) {
+                // Si hay error, es array vacío
+            }
+            
+            // Buscar ruta abierta: propia o de técnico compartido
+            $rutaAbierta = RutaTecnica::where('cerrada', false)
+                ->where(function ($query) use ($codVendedor, $codigosTecnicos) {
+                    $query->where('CodVendedor', trim($codVendedor));
+                    
+                    if (!empty($codigosTecnicos)) {
+                        $query->orWhereIn('CodTecnico', $codigosTecnicos);
+                    }
+                })
                 ->orderBy('FechaInicio', 'desc')
                 ->first();
             
@@ -271,14 +323,41 @@ class RutaTecnicaController extends Controller
             // Si el método no existe, continuar con array vacío
         }
 
+        // Construir mensaje personalizado si la ruta es compartida
+        $mensaje = null;
+        if ($rutaAbierta) {
+            $esPropia = $rutaAbierta->CodVendedor === trim($codVendedor);
+            if ($esPropia) {
+                $mensaje = 'Ya tienes una ruta abierta. Agrega las visitas allí.';
+            } else {
+                // Ruta de otro asesor que comparte técnico
+                $mensaje = "El asesor {$rutaAbierta->CodVendedor} ya inició la ruta del {$rutaAbierta->FechaInicio} al {$rutaAbierta->FechaFin}. Agrega tus visitas allí.";
+            }
+        }
+
+        $rutaAbiertaData = null;
+        if ($rutaAbierta) {
+            $nombreVendedor = $rutaAbierta->CodVendedor;
+            try {
+                $vendedor = \App\Models\User::where('codigo_vendedor', trim($rutaAbierta->CodVendedor))->first();
+                if ($vendedor) {
+                    $nombreVendedor = $vendedor->name;
+                }
+            } catch (\Exception $e) {}
+        
+            $rutaAbiertaData = [
+                'NumeroRuta' => $rutaAbierta->NumeroRuta,
+                'FechaInicio' => \Carbon\Carbon::parse($rutaAbierta->FechaInicio)->format('Y-m-d'),
+                'FechaFin' => \Carbon\Carbon::parse($rutaAbierta->FechaFin)->format('Y-m-d'),
+                'CodVendedor' => $rutaAbierta->CodVendedor,
+                'NombreVendedor' => $nombreVendedor,
+            ];
+        }
+        
         return Inertia::render('RutasTecnicas/Create', [
             'technicalUsers' => $technicalUsers,
-            'rutaAbierta' => $rutaAbierta ? [
-                'NumeroRuta' => $rutaAbierta->NumeroRuta,
-                'FechaInicio' => $rutaAbierta->FechaInicio,
-                'FechaFin' => $rutaAbierta->FechaFin,
-            ] : null,
-            'mensaje' => $rutaAbierta ? 'Ya tienes una ruta abierta. Agrega las visitas allí.' : null,
+            'rutaAbierta' => $rutaAbiertaData,
+            'mensaje' => $mensaje,
         ]);
     }
 
@@ -290,16 +369,38 @@ class RutaTecnicaController extends Controller
         DB::beginTransaction();
 
         try {
-            $codVendedor = Auth::user()->codigo_vendedor;
+            $user = Auth::user();
+            $codVendedor = $user->codigo_vendedor;
             
-            // Verificar si ya existe una ruta abierta con rango de fechas que se superponga
-            $rutaExistente = RutaTecnica::where('CodVendedor', trim($codVendedor))
-                ->where('cerrada', false)
+            // Obtener técnicos que comparten con este usuario
+            $codigosTecnicos = [];
+            try {
+                $codigosTecnicos = $user->technicalUsers()
+                    ->whereHas('roles', function ($query) {
+                        $query->whereRaw('LOWER(name) IN (?, ?)', ['tecnico', 'técnico']);
+                    })
+                    ->whereNotNull('codigo_vendedor')
+                    ->pluck('codigo_vendedor')
+                    ->map(fn($codigo) => trim($codigo))
+                    ->all();
+            } catch (\Exception $e) {
+                // Si hay error, es array vacío
+            }
+            
+            // Verificar si ya existe una ruta abierta (propia o compartida) con rango de fechas que se superponga
+            $rutaExistente = RutaTecnica::where('cerrada', false)
+                ->where(function ($query) use ($codVendedor, $codigosTecnicos, $request) {
+                    // Buscar ruta propia O de técnico compartido
+                    $query->where(function ($q) use ($codVendedor) {
+                        $q->where('CodVendedor', trim($codVendedor));
+                    });
+                    
+                    if (!empty($codigosTecnicos)) {
+                        $query->orWhereIn('CodTecnico', $codigosTecnicos);
+                    }
+                })
                 ->where(function ($query) use ($request) {
-                    // La nueva ruta se superpone si:
-                    // - La fecha inicio está dentro del rango existente
-                    // - O la fecha fin está dentro del rango existente
-                    // - O el rango existente está completamente dentro de la nueva ruta
+                    // Que tenga superposición de fechas
                     $query->where(function ($q) use ($request) {
                         $q->where('FechaInicio', '<=', $request->fecha_inicio)
                           ->where('FechaFin', '>=', $request->fecha_inicio);
@@ -313,8 +414,13 @@ class RutaTecnicaController extends Controller
                 })
                 ->first();
             
+            // Si existe ruta abierta (propia o compartida), unirse a ella
             if ($rutaExistente) {
-                return back()->with('error', 'Ya tienes una ruta abierta para este rango de fechas (' . $rutaExistente->FechaInicio . ' al ' . $rutaExistente->FechaFin . '). Agrega las visitas a esa ruta.');
+                DB::commit();
+                
+                return redirect()
+                    ->route('rutas-tecnicas.edit', $rutaExistente->NumeroRuta)
+                    ->with('success', 'Te uniste a la ruta técnica #' . $rutaExistente->NumeroRuta . '. Agrega tus visitas.');
             }
             
             // Generar número de ruta
@@ -526,15 +632,15 @@ class RutaTecnicaController extends Controller
         }
 
         // Obtener las visitas
-        $visitas = $visitasQuery->get()->map(function ($visita) {
+        $visitas = $visitasQuery->get()->map(function ($visita) use ($codVendedor) {
             $fechaVisita = $visita->FechaVisita;
             if (is_string($fechaVisita)) {
                 $fechaVisita = \Carbon\Carbon::parse($fechaVisita);
             }
             
             return [
-                'id' => $visita->idVisita,
-                'idVisita' => $visita->idVisita,
+                'id' => $visita->IdVisita,
+                'idVisita' => $visita->IdVisita,
                 'cliente_id' => $visita->Nit,
                 'nit' => $visita->Nit,
                 'nombre_cliente' => $visita->NombreCliente,
@@ -546,6 +652,8 @@ class RutaTecnicaController extends Controller
                 'tel_contacto' => $visita->TelContacto,
                 'cod_tecnico' => $visita->CodTecnico,
                 'observaciones' => $visita->Observaciones,
+                'cod_vendedor' => $visita->CodVendedor,
+                'es_propia' => trim($visita->CodVendedor) === trim($codVendedor),
             ];
         });
 
@@ -588,101 +696,176 @@ class RutaTecnicaController extends Controller
      */
     public function update(Request $request, $numeroRuta)
     {
-        $user = Auth::user();
-        $codVendedor = $user->codigo_vendedor;
+        DB::beginTransaction();
         
-        // Verificar permisos
-        $permissionNames = $user->permission_names ?? collect([]);
-        $roleNames = $user->getRoleNames() ?? collect([]);
-        $verTodasLasRutas = $permissionNames->contains('rutas-tecnicas.ver-todos') || 
-                            $permissionNames->contains('rutas-tecnicas.editar') ||
-                            $roleNames->contains('super-admin') ||
-                            $roleNames->contains('administrador') ||
-                            $roleNames->contains('admin') ||
-                            $roleNames->contains('supervisor');
-        
-        if (!$verTodasLasRutas && !$codVendedor) {
-            return back()->with('error', 'Tu usuario no tiene un código de vendedor asignado.');
-        }
-
-        // Verificar que la ruta existe y está abierta
-        $rutaExistente = RutaTecnica::where('NumeroRuta', $numeroRuta)
-            ->when(!$verTodasLasRutas, function ($q) use ($codVendedor) {
-                return $q->where('CodVendedor', trim($codVendedor));
-            })
-            ->first();
-
-        if (!$rutaExistente) {
-            return back()->with('error', 'Ruta técnica no encontrada.');
-        }
-
-        if ($rutaExistente->cerrada) {
-            return back()->with('error', 'No puedes modificar una ruta cerrada.');
-        }
-
-        // Eliminar todas las visitas existentes de esta ruta
-        RutaTecnica::where('NumeroRuta', $numeroRuta)
-            ->when(!$verTodasLasRutas, function ($q) use ($codVendedor) {
-                return $q->where('CodVendedor', trim($codVendedor));
-            })
-            ->delete();
-        
-        // Crear todas las visitas nuevas
-        $visitasData = $request->input('visitas', []);
-        $allowedCodTecnicos = [];
         try {
-            $allowedCodTecnicos = $user->technicalUsers()
-                ->whereHas('roles', function ($query) {
-                    $query->whereRaw('LOWER(name) IN (?, ?)', ['tecnico', 'técnico']);
-                })
-                ->whereNotNull('codigo_vendedor')
-                ->pluck('codigo_vendedor')
-                ->map(fn($codigo) => trim($codigo))
-                ->all();
+            $user = Auth::user();
+            $codVendedor = $user->codigo_vendedor;
+            
+            // Verificar permisos
+            $permissionNames = $user->permission_names ?? collect([]);
+            $roleNames = $user->getRoleNames() ?? collect([]);
+            $verTodasLasRutas = $permissionNames->contains('rutas-tecnicas.ver-todos') || 
+                                $permissionNames->contains('rutas-tecnicas.editar') ||
+                                $roleNames->contains('super-admin') ||
+                                $roleNames->contains('administrador') ||
+                                $roleNames->contains('admin') ||
+                                $roleNames->contains('supervisor');
+            
+            if (!$verTodasLasRutas && !$codVendedor) {
+                return back()->with('error', 'Tu usuario no tiene un código de vendedor asignado.');
+            }
+
+            // Verificar que la ruta existe y está abierta
+            $rutaExistente = RutaTecnica::where('NumeroRuta', $numeroRuta)
+                ->first();
+
+            if (!$rutaExistente) {
+                return back()->with('error', 'Ruta técnica no encontrada.');
+            }
+
+            if ($rutaExistente->cerrada) {
+                return back()->with('error', 'No puedes modificar una ruta cerrada.');
+            }
+            
+            // Obtener las visitas existentes de esta ruta
+            $visitasExistentes = RutaTecnica::where('NumeroRuta', $numeroRuta)
+                ->get()
+                ->keyBy('IdVisita');
+            
+            // Obtener técnicos permitidos
+            $allowedCodTecnicos = [];
+            try {
+                $allowedCodTecnicos = $user->technicalUsers()
+                    ->whereHas('roles', function ($query) {
+                        $query->whereRaw('LOWER(name) IN (?, ?)', ['tecnico', 'técnico']);
+                    })
+                    ->whereNotNull('codigo_vendedor')
+                    ->pluck('codigo_vendedor')
+                    ->map(fn($codigo) => trim($codigo))
+                    ->all();
+            } catch (\Exception $e) {
+                // Si el método no existe, permitir cualquier técnico
+            }
+            
+            // Obtener datos de visitas del request
+            $visitasData = $request->input('visitas', []);
+            $idsAGuardar = [];
+            
+            foreach ($visitasData as $visita) {
+                $visitaId = $visita['idVisita'] ?? $visita['id'] ?? null;
+                $codTecnico = trim($visita['cod_tecnico'] ?? '');
+                
+                // Validar técnico permitido
+                if (empty($codTecnico) || (count($allowedCodTecnicos) > 0 && !in_array($codTecnico, $allowedCodTecnicos, true))) {
+                    throw new \Exception('El técnico seleccionado no es válido para tu usuario.');
+                }
+                
+                // Si tiene ID válido, es una visita existente - validar ownership
+                if (!empty($visitaId) && $visitaId > 0) {
+                    $visitaOriginal = $visitasExistentes[$visitaId] ?? null;
+                    
+                    if (!$visitaOriginal) {
+                        throw new \Exception('Visita no encontrada.');
+                    }
+                    
+                    // Solo el dueño de la visita o admin/supervisor pueden modificarla
+                    if (!$verTodasLasRutas && trim($visitaOriginal->CodVendedor) !== trim($codVendedor)) {
+                        throw new \Exception('Esta visita fue agregada por el asesor ' . $visitaOriginal->CodVendedor . '. Coordina directamente con él para modificarla.');
+                    }
+                    
+                    $idsAGuardar[] = $visitaId;
+                    
+                    // Actualizar visita existente
+                    $fechaInicio = $request->fecha_inicio;
+                    $fechaFin = $request->fecha_fin;
+                    $fechaVisita = $visita['fecha_visita'];
+                    
+                    // Extraer solo la fecha (sin día de la semana) si viene formateada
+                    if (preg_match('/^\d{4}-\d{2}-\d{2}/', $fechaInicio)) {
+                        $fechaInicio = substr($fechaInicio, 0, 10);
+                    }
+                    if (preg_match('/^\d{4}-\d{2}-\d{2}/', $fechaFin)) {
+                        $fechaFin = substr($fechaFin, 0, 10);
+                    }
+                    if (preg_match('/^\d{4}-\d{2}-\d{2}/', $fechaVisita)) {
+                        $fechaVisita = substr($fechaVisita, 0, 10);
+                    }
+                    
+                    RutaTecnica::where('IdVisita', $visitaId)->update([
+                        'Nit' => $visita['nit'],
+                        'NombreCliente' => $visita['nombre_cliente'],
+                        'DireccionCompleta' => $visita['direccion_completa'],
+                        'FechaVisita' => $fechaVisita,
+                        'NomContacto' => $visita['nom_contacto'] ?? '',
+                        'TelContacto' => $visita['tel_contacto'] ?? '',
+                        'CodTecnico' => $codTecnico,
+                        'Observaciones' => $visita['observaciones'] ?? '',
+                    ]);
+                } else {
+                    // Nueva visita - crear con CodVendedor del usuario actual
+                    $fechaInicio = $request->fecha_inicio;
+                    $fechaFin = $request->fecha_fin;
+                    $fechaVisita = $visita['fecha_visita'];
+                    
+                    // Extraer solo la fecha (sin día de la semana) si viene formateada
+                    if (preg_match('/^\d{4}-\d{2}-\d{2}/', $fechaInicio)) {
+                        $fechaInicio = substr($fechaInicio, 0, 10);
+                    }
+                    if (preg_match('/^\d{4}-\d{2}-\d{2}/', $fechaFin)) {
+                        $fechaFin = substr($fechaFin, 0, 10);
+                    }
+                    if (preg_match('/^\d{4}-\d{2}-\d{2}/', $fechaVisita)) {
+                        $fechaVisita = substr($fechaVisita, 0, 10);
+                    }
+                    
+                    RutaTecnica::create([
+                        'NumeroRuta' => $numeroRuta,
+                        'FechaInicio' => $fechaInicio,
+                        'FechaFin' => $fechaFin,
+                        'Nit' => $visita['nit'],
+                        'NombreCliente' => $visita['nombre_cliente'],
+                        'DireccionCompleta' => $visita['direccion_completa'],
+                        'FechaVisita' => $fechaVisita,
+                        'NomContacto' => $visita['nom_contacto'] ?? '',
+                        'TelContacto' => $visita['tel_contacto'] ?? '',
+                        'CodVendedor' => $codVendedor,
+                        'CodTecnico' => $codTecnico,
+                        'Observaciones' => $visita['observaciones'] ?? '',
+                    ]);
+                }
+            }
+            
+            // Eliminar las visitas que ya no están en la lista (pero solo propias)
+            foreach ($visitasExistentes as $visitaExistente) {
+                if (!in_array($visitaExistente->IdVisita, $idsAGuardar)) {
+                    // Solo el dueño puede eliminar
+                    if (!$verTodasLasRutas && trim($visitaExistente->CodVendedor) !== trim($codVendedor)) {
+                        continue; // No eliminar visitas de otros asesores
+                    }
+                    
+                    $visitaExistente->delete();
+                }
+            }
+            
+            DB::commit();
+
+            return redirect()->route('rutas-tecnicas.show', $numeroRuta)
+                ->with('success', 'Ruta técnica actualizada correctamente.');
+                
         } catch (\Exception $e) {
-            // Si el método no existe, permitir cualquier técnico
-        }
-
-        foreach ($visitasData as $visita) {
-            $codTecnico = trim($visita['cod_tecnico'] ?? '');
-            if (empty($codTecnico) || (count($allowedCodTecnicos) > 0 && !in_array($codTecnico, $allowedCodTecnicos, true))) {
-                return back()->with('error', 'El técnico seleccionado no es válido para tu usuario.');
-            }
-
-            // Siempre crear nueva visita (las anteriores ya se eliminaron)
-            $fechaInicio = $request->fecha_inicio;
-            $fechaFin = $request->fecha_fin;
-            $fechaVisita = $visita['fecha_visita'];
+            DB::rollBack();
             
-            // Extraer solo la fecha (sin día de la semana) si viene formateada
-            if (preg_match('/^\d{4}-\d{2}-\d{2}/', $fechaInicio)) {
-                $fechaInicio = substr($fechaInicio, 0, 10);
-            }
-            if (preg_match('/^\d{4}-\d{2}-\d{2}/', $fechaFin)) {
-                $fechaFin = substr($fechaFin, 0, 10);
-            }
-            if (preg_match('/^\d{4}-\d{2}-\d{2}/', $fechaVisita)) {
-                $fechaVisita = substr($fechaVisita, 0, 10);
-            }
+            Log::error('Error al actualizar ruta técnica', [
+                'numero_ruta' => $numeroRuta,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
             
-            RutaTecnica::create([
-                    'NumeroRuta' => $numeroRuta,
-                    'FechaInicio' => $fechaInicio,
-                    'FechaFin' => $fechaFin,
-                    'Nit' => $visita['nit'],
-                    'NombreCliente' => $visita['nombre_cliente'],
-                    'DireccionCompleta' => $visita['direccion_completa'],
-                    'FechaVisita' => $fechaVisita,
-                    'NomContacto' => $visita['nom_contacto'] ?? '',
-                    'TelContacto' => $visita['tel_contacto'] ?? '',
-                    'CodVendedor' => $codVendedor,
-                    'CodTecnico' => $codTecnico,
-                    'Observaciones' => $visita['observaciones'] ?? '',
-                ]);
+            return back()
+                ->withInput()
+                ->with('error', 'Error al actualizar la ruta técnica: ' . $e->getMessage());
         }
-
-        return redirect()->route('rutas-tecnicas.show', $numeroRuta)
-            ->with('success', 'Ruta técnica actualizada correctamente.');
     }
 
     /**

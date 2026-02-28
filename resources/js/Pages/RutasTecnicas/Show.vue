@@ -1,6 +1,8 @@
 <script setup>
-import { router } from '@inertiajs/vue3';
+import { usePage, router } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AppLayout.vue';
+
+const page = usePage();
 
 const props = defineProps({
     ruta: Object
@@ -141,7 +143,12 @@ const goBack = () => {
                                             {{ visita.FechaVisita }}
                                         </td>
                                         <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                                            {{ visita.NombreCliente }}
+                                            <div class="flex items-center justify-between gap-2">
+                                                <span>{{ visita.NombreCliente }}</span>
+                                                <span v-if="visita.CodVendedor && visita.CodVendedor !== page.props.auth?.user?.codigo_vendedor" class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 whitespace-nowrap">
+                                                    Asesor: {{ visita.CodVendedor }}
+                                                </span>
+                                            </div>
                                         </td>
                                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                             {{ visita.Nit }}

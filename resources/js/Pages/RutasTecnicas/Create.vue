@@ -337,9 +337,10 @@ const cerrarNotificacion = () => {
                     </div>
                 </transition>
 
-                <!-- Warning when there's an open route -->
+                <!-- Warning when there's an open route - Propia o Compartida -->
                 <div v-if="rutaAbierta" class="mb-6">
-                    <div class="rounded-md bg-yellow-50 p-4 border-l-4 border-yellow-400">
+                    <!-- RUTA PROPIA: Amarillo -->
+                    <div v-if="rutaAbierta.CodVendedor === page.props.auth?.user?.codigo_vendedor" class="rounded-md bg-yellow-50 p-4 border-l-4 border-yellow-400">
                         <div class="flex">
                             <div class="flex-shrink-0">
                                 <svg class="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
@@ -348,7 +349,7 @@ const cerrarNotificacion = () => {
                             </div>
                             <div class="ml-3 flex-1">
                                 <p class="text-sm font-medium text-yellow-800">
-                                    {{ mensaje || 'Ya tienes una ruta abierta. Agrega las visitas allí.' }}
+                                    Ya tienes una ruta abierta. Agrega las visitas allí.
                                 </p>
                                 <p class="text-sm text-yellow-700 mt-1">
                                     Ruta #{{ rutaAbierta.NumeroRuta }}
@@ -357,7 +358,37 @@ const cerrarNotificacion = () => {
                                     :href="route('rutas-tecnicas.edit', rutaAbierta.NumeroRuta)" 
                                     class="mt-2 inline-flex items-center text-sm font-medium text-yellow-800 hover:text-yellow-900 underline"
                                 >
-                                    Ver ruta abierta
+                                    Ir a la ruta
+                                    <svg class="ml-1 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                                    </svg>
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- RUTA COMPARTIDA: Azul -->
+                    <div v-else class="rounded-md bg-blue-50 p-4 border-l-4 border-blue-400">
+                        <div class="flex">
+                            <div class="flex-shrink-0">
+                                <svg class="h-5 w-5 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
+                                    <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z" />
+                                </svg>
+                            </div>
+                            <div class="ml-3 flex-1">
+                                <p class="text-sm font-medium text-blue-800">
+                                El asesor <span class="font-semibold">{{ rutaAbierta.NombreVendedor }} ({{ rutaAbierta.CodVendedor }})</span> 
+                                ya inició la ruta del <span class="font-semibold">{{ rutaAbierta.FechaInicio }}</span> 
+                                al <span class="font-semibold">{{ rutaAbierta.FechaFin }}</span>.
+                            </p>
+                                <p class="text-sm text-blue-700 mt-1">
+                                    Agrega tus visitas a esa ruta.
+                                </p>
+                                <a 
+                                    :href="route('rutas-tecnicas.edit', rutaAbierta.NumeroRuta)" 
+                                    class="mt-2 inline-flex items-center text-sm font-medium text-blue-800 hover:text-blue-900 underline"
+                                >
+                                    Ir a la ruta #{{ rutaAbierta.NumeroRuta }}
                                     <svg class="ml-1 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
                                     </svg>

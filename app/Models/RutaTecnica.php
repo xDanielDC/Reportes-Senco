@@ -35,7 +35,7 @@ class RutaTecnica extends Model
     protected $casts = [
         'FechaInicio' => 'date',
         'FechaFin' => 'date',
-        'fechaVisita' => 'date',
+        'FechaVisita' => 'date',
         'cerrada' => 'boolean',
         'fecha_cierre' => 'datetime',
     ];

@@ -152,6 +152,7 @@ const abrirModalEditar = (visita, index) => {
         tecnico_user_id: null,
         tecnico_nombre: '',
         cod_tecnico: visita.cod_tecnico || '',
+        es_propia: visita.es_propia,
     };
     
     // Buscar técnico por código
@@ -226,6 +227,7 @@ const guardarVisita = () => {
     // Usar fecha cruda (YYYY-MM-DD) para guardar en la base de datos
     const visitaData = {
         id: visitaForm.value.id,
+        idVisita: visitaForm.value.id,
         nit: visitaForm.value.nit,
         nombre_cliente: visitaForm.value.nombre_cliente,
         direccion_completa: visitaForm.value.direccion_completa,
@@ -235,6 +237,7 @@ const guardarVisita = () => {
         nom_contacto: visitaForm.value.nom_contacto || '',
         observaciones: visitaForm.value.observaciones || '',
         cod_tecnico: visitaForm.value.cod_tecnico,
+        es_propia: visitaForm.value.es_propia ?? true,
     };
 
     if (visitaEditando.value !== null) {
@@ -273,9 +276,6 @@ const guardarRuta = () => {
     }
 
     form.put(route('rutas-tecnicas.update', props.numeroRuta), {
-        onSuccess: () => {
-            // Success is handled by the controller redirect
-        },
         onError: (errors) => {
             console.error('Error al guardar:', errors);
             alert('Error al guardar la ruta: ' + Object.values(errors).join(', '));
@@ -402,22 +402,42 @@ onMounted(() => {
                                     <tr v-for="(visita, index) in form.visitas" :key="index">
                                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ index + 1 }}</td>
                                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ visita.fecha_visita }}</td>
-                                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{{ visita.nombre_cliente }}</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                            <div class="flex items-center justify-between gap-2">
+                                                <span>{{ visita.nombre_cliente }}</span>
+                                                <span v-if="!visita.es_propia" class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 whitespace-nowrap">
+                                                    Asesor: {{ visita.cod_vendedor }}
+                                                </span>
+                                            </div>
+                                        </td>
                                         <td class="px-6 py-4 text-sm text-gray-500 max-w-xs truncate">{{ visita.direccion_completa }}</td>
                                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ visita.cod_tecnico }}</td>
                                         <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
                                             <button
                                                 type="button"
                                                 @click="abrirModalEditar(visita, index)"
-                                                class="text-indigo-600 hover:text-indigo-900 mr-3"
+                                                :disabled="!visita.es_propia"
+                                                :class="[
+                                                    'mr-3 transition-colors',
+                                                    visita.es_propia 
+                                                        ? 'text-indigo-600 hover:text-indigo-900 cursor-pointer' 
+                                                        : 'text-gray-400 cursor-not-allowed'
+                                                ]"
+                                                :title="!visita.es_propia ? 'No puedes editar visitas de otros asesores' : 'Editar visita'"
                                             >
                                                 Editar
                                             </button>
                                             <button
                                                 type="button"
                                                 @click="eliminarVisita(index)"
-                                                class="text-red-600 hover:text-red-900"
-                                                v-if="puedeEliminar"
+                                                :disabled="!visita.es_propia || !puedeEliminar"
+                                                :class="[
+                                                    'transition-colors',
+                                                    (visita.es_propia && puedeEliminar)
+                                                        ? 'text-red-600 hover:text-red-900 cursor-pointer' 
+                                                        : 'text-gray-400 cursor-not-allowed'
+                                                ]"
+                                                :title="!visita.es_propia ? 'No puedes eliminar visitas de otros asesores' : (!puedeEliminar ? 'No tienes permisos para eliminar' : 'Eliminar visita')"
                                             >
                                                 Eliminar
                                             </button>
