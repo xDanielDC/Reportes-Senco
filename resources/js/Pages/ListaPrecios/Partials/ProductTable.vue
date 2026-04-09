@@ -305,12 +305,12 @@ const getStockLabel = (stock) => {
                         </td>
                         <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
                             <span class="font-mono text-xs bg-gray-100 px-2 py-1 rounded">
-                                {{ Number(producto['ML/Caja']).toFixed(1) }}
+                                {{ Number(producto['ML/Caja']) }}
                             </span>
                         </td>
                         <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
                             <span class="font-mono text-xs bg-gray-100 px-2 py-1 rounded">
-                                {{ Number(producto['CJ/CRTN']).toFixed(1) }}
+                                {{ Number(producto['CJ/CRTN']) }}
                             </span>
                         </td>
                         <td class="px-4 py-3 whitespace-nowrap text-sm font-semibold text-gray-900">
