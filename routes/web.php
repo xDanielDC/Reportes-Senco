@@ -223,6 +223,63 @@ Route::middleware(['auth', 'permission:ver-lista-precios'])->prefix('lista-preci
     ->name('lista-precios.pdf');
 });
 
+// Módulo Visitas Técnicas
+Route::middleware(['auth:sanctum', config('jetstream.auth_session'), 'verified'])
+->prefix('visitas-tecnicas')->name('visitastecnicas.')->group(function () {
+    Route::get('/visitas', [\App\Http\Controllers\VisitasTecnicas\VisitaController::class, 'index'])
+        ->name('visitas.index');
+    Route::get('/visitas/create/{id_visita}', [\App\Http\Controllers\VisitasTecnicas\VisitaController::class, 'create'])
+        ->name('visitas.create');
+    Route::post('/visitas', [\App\Http\Controllers\VisitasTecnicas\VisitaController::class, 'store'])
+        ->name('visitas.store');
+    Route::get('/visitas/{id}', [\App\Http\Controllers\VisitasTecnicas\VisitaController::class, 'show'])
+        ->name('visitas.show');
+    Route::post('/visitas/{id}/guardar-borrador', [\App\Http\Controllers\VisitasTecnicas\VisitaController::class, 'guardarBorrador'])
+        ->name('visitas.guardar-borrador');
+    Route::post('/visitas/{id}/finalizar', [\App\Http\Controllers\VisitasTecnicas\VisitaController::class, 'finalizar'])
+        ->name('visitas.finalizar');
+    Route::post('/visitas/{id}/solicitar-cotizacion', [\App\Http\Controllers\VisitasTecnicas\VisitaController::class, 'solicitarCotizacion'])
+        ->name('visitas.solicitar-cotizacion');
+    Route::post('/visitas/{id}/reprogramar', [\App\Http\Controllers\VisitasTecnicas\VisitaController::class, 'reprogramar'])
+        ->name('visitas.reprogramar');
+    
+     Route::post('/equipos', [\App\Http\Controllers\VisitasTecnicas\EquipoController::class, 'store'])
+        ->name('equipos.store');
+    Route::put('/equipos/{id}', [\App\Http\Controllers\VisitasTecnicas\EquipoController::class, 'update'])
+        ->name('equipos.update');
+    Route::put('/equipos/{id}/soluciones-complementarias', [\App\Http\Controllers\VisitasTecnicas\EquipoController::class, 'agregarSolucionesComplementarias'])
+        ->name('equipos.soluciones-complementarias');
+    Route::delete('/equipos/{id}', [\App\Http\Controllers\VisitasTecnicas\EquipoController::class, 'destroy'])
+        ->name('equipos.destroy');
 
+    // Solicitudes de partes
+    Route::post('/solicitudes-partes', [\App\Http\Controllers\VisitasTecnicas\SolicitudParteController::class, 'store'])
+        ->name('solicitudes-partes.store');
+    Route::put('/solicitudes-partes/{id}', [\App\Http\Controllers\VisitasTecnicas\SolicitudParteController::class, 'update'])
+        ->name('solicitudes-partes.update');
+    Route::delete('/solicitudes-partes/{id}', [\App\Http\Controllers\VisitasTecnicas\SolicitudParteController::class, 'destroy'])
+        ->name('solicitudes-partes.destroy');
 
-
+    // Búsqueda SENCO360 para equipos y repuestos
+    Route::get('/senco360/herramientas/buscar', [\App\Http\Controllers\VisitasTecnicas\Senco360Controller::class, 'buscarHerramientas'])
+        ->name('senco360.herramientas.buscar');
+    Route::get('/senco360/repuestos/buscar', [\App\Http\Controllers\VisitasTecnicas\Senco360Controller::class, 'buscarRepuestos'])
+        ->name('senco360.repuestos.buscar');
+    Route::get('/senco360/herramientas/descripcion', [\App\Http\Controllers\VisitasTecnicas\Senco360Controller::class, 'obtenerDescripcionHerramienta'])
+        ->name('senco360.herramientas.descripcion');
+    Route::get('/senco360/repuestos/descripcion', [\App\Http\Controllers\VisitasTecnicas\Senco360Controller::class, 'obtenerDescripcionRepuesto'])
+        ->name('senco360.repuestos.descripcion');
+    // Gestión repuestos (asesor/asistente)
+    Route::get('/repuestos', [\App\Http\Controllers\VisitasTecnicas\RepuestoGestionController::class, 'index'])
+        ->name('repuestos.index');
+    Route::put('/repuestos/estado/masivo', [\App\Http\Controllers\VisitasTecnicas\RepuestoGestionController::class, 'actualizarEstadoMasivo'])
+        ->name('repuestos.estado.masivo');
+    Route::put('/repuestos/{id}/estado', [\App\Http\Controllers\VisitasTecnicas\RepuestoGestionController::class, 'actualizarEstado'])
+        ->name('repuestos.estado');
+    Route::post('/fotos', [\App\Http\Controllers\VisitasTecnicas\FotoController::class, 'store'])
+        ->name('fotos.store');
+    Route::delete('/fotos/{id}', [\App\Http\Controllers\VisitasTecnicas\FotoController::class, 'destroy'])
+        ->name('fotos.destroy');
+    Route::post('/visitas/reprogramar-ruta/{id_visita}', [\App\Http\Controllers\VisitasTecnicas\VisitaController::class, 'reprogramarRuta'])
+    ->name('visitas.reprogramar-ruta');
+});

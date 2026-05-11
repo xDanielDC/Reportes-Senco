@@ -36,7 +36,7 @@ class RutaTecnica extends Model
         'FechaInicio' => 'date',
         'FechaFin' => 'date',
         'FechaVisita' => 'date',
-        'cerrada' => 'boolean',
+        'cerrada' => 'integer',
         'fecha_cierre' => 'datetime',
     ];
 
@@ -56,6 +56,12 @@ class RutaTecnica extends Model
     {
         return $this->belongsTo(User::class, 'codigo_vendedor', 'codigo_vendedor');
     }
+
+    public function visitaEncab()
+    {
+        return $this->hasOne(\App\Models\Senco360\VisitaEncab::class, 'ID_VISITA', 'IdVisita');
+    }
+
 
     /**
      * Generar número de ruta automático
@@ -110,9 +116,19 @@ class RutaTecnica extends Model
     /**
      * Scope para obtener solo rutas abiertas
      */
+    public function scopeCerradas($query)
+    {
+        return $query->where('cerrada', 1);
+    }
+
     public function scopeAbiertas($query)
     {
-        return $query->where('cerrada', false);
+        return $query->where('cerrada', 0);
+    }
+
+    public function scopeDelTecnico($query, string $codigoTecnico)
+    {
+        return $query->where('CodTecnico', $codigoTecnico);
     }
 
     /**
@@ -171,7 +187,7 @@ class RutaTecnica extends Model
         foreach ($rutas as $ruta) {
             if ($ruta->debeCerrarse()) {
                 $ruta->cerrar();
+                }
             }
         }
     }
-}
