@@ -89,7 +89,7 @@ const logout = () => {
 
                                 <!-- Dropdown: Rutas Técnicas -->
                                 <div class="relative inline-flex items-center px-1 pt-1 border-b-2 border-transparent"
-                                     v-if="$page.props.auth.user.permissions?.includes('rutas-tecnicas.crear') || $page.props.auth.user.permissions?.includes('rutas-tecnicas.ver')">
+                                     v-if="$page.props.auth.user.permissions?.includes('rutas-tecnicas.crear') || $page.props.auth.user.permissions?.includes('rutas-tecnicas.ver') || $page.props.auth.user.permissions?.includes('visitastecnicas.ver') || $page.props.auth.user.permissions?.includes('visitastecnicas.ver-todos') || $page.props.auth.user.permissions?.includes('visitastecnicas.repuestos.ver') || $page.props.auth.user.permissions?.includes('visitastecnicas.repuestos.ver-todos')">
                                     <Dropdown align="left" width="60">
                                         <template #trigger>
                                             <a href="javascript:void(0)"
@@ -111,10 +111,23 @@ const logout = () => {
                                                     <font-awesome-icon icon="fa-solid fa-list" class="mr-2"/>
                                                     Mis Rutas Técnicas
                                                 </DropdownLink>
+                                                <div class="border-t border-gray-200" />
+                                                <DropdownLink :href="route('visitastecnicas.visitas.index')"
+                                                              v-if="$page.props.auth.user.permissions?.includes('visitastecnicas.ver') || $page.props.auth.user.permissions?.includes('visitastecnicas.ver-todos')">
+                                                    <font-awesome-icon icon="fa-solid fa-toolbox" class="mr-2"/>
+                                                    Visitas Técnicas
+                                                </DropdownLink>
+                                                <DropdownLink :href="route('visitastecnicas.repuestos.index')"
+                                                              v-if="$page.props.auth.user.permissions?.includes('visitastecnicas.repuestos.ver') || $page.props.auth.user.permissions?.includes('visitastecnicas.repuestos.ver-todos')">
+                                                    <font-awesome-icon icon="fa-solid fa-boxes-stacked" class="mr-2"/>
+                                                    Repuestos
+                                                </DropdownLink>
                                             </div>
                                         </template>
                                     </Dropdown>
                                 </div>
+
+
 
                                 <!-- Dropdown: Gestión de Clientes -->
                                 <div class="relative inline-flex items-center px-1 pt-1 border-b-2 border-transparent"
@@ -380,6 +393,28 @@ const logout = () => {
                             >
                                 <font-awesome-icon icon="fa-solid fa-plus" class="mr-2"/>
                                 Nueva Ruta Técnica
+                            </ResponsiveNavLink>
+                        </template>
+
+                        <template v-if="$page.props.auth.user.permissions?.includes('visitastecnicas.ver') || $page.props.auth.user.permissions?.includes('visitastecnicas.ver-todos')">
+                            <ResponsiveNavLink
+                                :href="route('visitastecnicas.visitas.index')"
+                                :active="route().current('visitastecnicas.*')"
+                                class="pl-8"
+                            >
+                                <font-awesome-icon icon="fa-solid fa-toolbox" class="mr-2"/>
+                                Visitas Técnicas
+                            </ResponsiveNavLink>
+                        </template>
+
+                        <template v-if="$page.props.auth.user.permissions?.includes('visitastecnicas.repuestos.ver') || $page.props.auth.user.permissions?.includes('visitastecnicas.repuestos.ver-todos')">
+                            <ResponsiveNavLink
+                                :href="route('visitastecnicas.repuestos.index')"
+                                :active="route().current('visitastecnicas.repuestos.*')"
+                                class="pl-8"
+                            >
+                                <font-awesome-icon icon="fa-solid fa-boxes-stacked" class="mr-2"/>
+                                Repuestos
                             </ResponsiveNavLink>
                         </template>
 
