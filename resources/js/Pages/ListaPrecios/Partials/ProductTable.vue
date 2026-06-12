@@ -336,7 +336,7 @@ const getStockLabel = (stock) => {
                                     class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
                                     :class="getStockBadgeClass(producto.Inventario)"
                                 >
-                                    {{ producto.Inventario || 0 }}
+                                    {{ producto.Inventario || 0 }} 
                                 </span>
                                 <span class="text-xs text-gray-500">
                                     {{ getStockLabel(producto.Inventario) }}

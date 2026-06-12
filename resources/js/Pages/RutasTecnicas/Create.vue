@@ -66,7 +66,6 @@ const puedeGuardar = computed(() => {
 });
 
 const tecnicosAsociados = computed(() => props.technicalUsers || []);
-const tieneUnTecnico = computed(() => tecnicosAsociados.value.length === 1);
 const tieneTecnicosAsociados = computed(() => tecnicosAsociados.value.length > 0);
 const tecnicoSeleccionadoActual = computed(() => {
     if (!visitaForm.value.cod_tecnico && !visitaForm.value.tecnico_user_id) {
@@ -98,20 +97,26 @@ const asignarTecnico = (tecnico) => {
         return;
     }
 
+    // Si es "Yo" (capacitación)
+    if (tecnico.id === 'yo-capacitacion') {
+        visitaForm.value.tecnico_user_id = 'yo-capacitacion';
+        visitaForm.value.tecnico_nombre = page.props.auth?.user?.name || 'Mi capacitación';
+        visitaForm.value.cod_tecnico = page.props.auth?.user?.codigo_vendedor || '';
+        return;
+    }
+
     visitaForm.value.tecnico_user_id = tecnico.id;
     visitaForm.value.tecnico_nombre = tecnico.name;
     visitaForm.value.cod_tecnico = tecnico.codigo_vendedor || '';
 };
 
 const seleccionarTecnicoPorId = (tecnicoId) => {
+    if (tecnicoId === 'yo-capacitacion') {
+        asignarTecnico({ id: 'yo-capacitacion' });
+        return;
+    }
     const tecnico = tecnicosAsociados.value.find((row) => String(row.id) === String(tecnicoId));
     asignarTecnico(tecnico);
-};
-
-const prepararTecnicoPorDefecto = () => {
-    if (tieneUnTecnico.value) {
-        asignarTecnico(tecnicosAsociados.value[0]);
-    }
 };
 
 // Verificar si el asesor actual puede usar "Taller Senco"
@@ -185,7 +190,6 @@ const resetearVisitaForm = () => {
     };
     clienteSeleccionado.value = null;
     direccionSeleccionada.value = null;
-    prepararTecnicoPorDefecto();
 };
 
 const seleccionarCliente = (cliente) => {
@@ -200,10 +204,6 @@ const seleccionarDireccion = (direccion) => {
     direccionSeleccionada.value = direccion;
     visitaForm.value.direccion_id = direccion.DireccionId;
     visitaForm.value.direccion_completa = direccion.DireccionCompleta;
-
-    if (tieneUnTecnico.value) {
-        asignarTecnico(tecnicosAsociados.value[0]);
-    }
 };
 
 const agregarVisita = () => {
@@ -213,7 +213,7 @@ const agregarVisita = () => {
     }
 
     if (!visitaForm.value.cod_tecnico) {
-        alert('Debes seleccionar un técnico para la visita');
+        alert('Debes seleccionar un técnico o marcarlo como tu capacitación');
         return;
     }
 
@@ -242,10 +242,6 @@ const editarVisita = (index) => {
             visitaForm.value.tecnico_user_id = tecnico.id;
             visitaForm.value.tecnico_nombre = tecnico.name;
         }
-    }
-
-    if (!visitaForm.value.cod_tecnico && tieneUnTecnico.value) {
-        asignarTecnico(tecnicosAsociados.value[0]);
     }
     
     // Necesitamos recrear el objeto cliente para que el componente funcione
@@ -576,14 +572,7 @@ const cerrarNotificacion = () => {
                                     No tienes técnicos asociados. Contacta a un administrador para asignar técnicos a tu usuario.
                                 </div>
 
-                                <div v-else-if="tieneUnTecnico" class="rounded-md bg-blue-50 border border-blue-200 p-3 text-sm text-blue-700">
-                                    Técnico asignado automáticamente:
-                                    <strong>{{ tecnicosAsociados[0].name }}</strong>
-                                    (Cod: {{ tecnicosAsociados[0].codigo_vendedor || 'N/A' }})
-                                </div>
-
                                 <select
-                                    v-else
                                     v-model="visitaForm.tecnico_user_id"
                                     @change="seleccionarTecnicoPorId(visitaForm.tecnico_user_id)"
                                     class="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
@@ -595,6 +584,9 @@ const cerrarNotificacion = () => {
                                         :value="tecnico.id"
                                     >
                                         {{ tecnico.name }} | Cod: {{ tecnico.codigo_vendedor || 'N/A' }}
+                                    </option>
+                                    <option value="yo-capacitacion">
+                                        Yo (capacitación) | Cod: {{ page.props.auth?.user?.codigo_vendedor || 'N/A' }}
                                     </option>
                                 </select>
 
