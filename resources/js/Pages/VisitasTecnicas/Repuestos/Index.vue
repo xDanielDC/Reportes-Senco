@@ -15,7 +15,21 @@ const filtroBuscarVisita = ref('')
 const visitaSeleccionadaId = ref(null)
 const esMovil = ref(false)
 const detalleMovilActivo = ref(false)
+
+const seleccionarVisitaDesdeQuery = () => {
+    if (typeof window === 'undefined') return
+
+    const visitaId = Number(new URLSearchParams(window.location.search).get('visita_id'))
+    if (visitaId > 0) {
+        visitaSeleccionadaId.value = visitaId
+        if (window.innerWidth < 768) {
+            detalleMovilActivo.value = true
+        }
+    }
+}
 const ESTADOS_CERRADOS = [15, 19]
+const ESTADOS_ASESOR = [13, 27]
+const ESTADOS_ASISTENTE = [14, 16, 17]
 
 const modalEstado      = ref(false)
 const repuestoActual   = ref(null)
@@ -25,6 +39,8 @@ const modalEstadoMasivo       = ref(false)
 const nuevoEstadoMasivoId     = ref('')
 const nuevaObservacionMasiva  = ref('')
 const repuestosSeleccionados  = ref([])
+const guardandoEstado         = ref(false)
+const guardandoEstadoMasivo   = ref(false)
 
 const normalizar = (valor) => String(valor ?? '').toLowerCase().trim()
 
@@ -136,11 +152,16 @@ const visitas = computed(() => {
             const activos = visita.repuestos.filter(r => !ESTADOS_CERRADOS.includes(Number(r.estado_id)))
             const cerrados = visita.repuestos.filter(r => ESTADOS_CERRADOS.includes(Number(r.estado_id)))
 
+            const repuestosAsesor = visita.repuestos.filter(r => ESTADOS_ASESOR.includes(Number(r.estado_id)))
+            const repuestosAsistente = visita.repuestos.filter(r => ESTADOS_ASISTENTE.includes(Number(r.estado_id)))
+
             return {
                 ...visita,
                 tienePendientes: activos.length > 0,
                 cantidadCerrados: cerrados.length,
                 totalRepuestos: visita.repuestos.length,
+                tienePendientesAsesor: repuestosAsesor.some(r => !ESTADOS_CERRADOS.includes(Number(r.estado_id))),
+                tienePendientesAsistente: repuestosAsistente.some(r => !ESTADOS_CERRADOS.includes(Number(r.estado_id))),
             }
         })
         .sort((a, b) => Number(b.visita_id ?? 0) - Number(a.visita_id ?? 0))
@@ -148,7 +169,8 @@ const visitas = computed(() => {
 
 const visitasFiltradas = computed(() => {
     return visitas.value.filter(v => {
-        return v.tienePendientes && coincideFiltro(v)
+        const tienePendientesParaRol = props.es_asesor ? v.tienePendientesAsesor : v.tienePendientesAsistente
+        return tienePendientesParaRol && coincideFiltro(v)
     }).map(v => ({
         ...v,
         repuestos: v.repuestos,
@@ -240,8 +262,11 @@ const abrirModalEstado = (repuesto) => {
 }
 
 const guardarEstado = () => {
-    if (!nuevoEstadoId.value) return
+    if (!nuevoEstadoId.value || guardandoEstado.value) return
+    guardandoEstado.value = true
+
     const url = `/visitas-tecnicas/repuestos/${repuestoActual.value.id}/estado`
+
     router.put(url, {
         estado_id:   nuevoEstadoId.value,
         observacion: nuevaObservacion.value,
@@ -250,7 +275,10 @@ const guardarEstado = () => {
         onSuccess: () => {
             modalEstado.value = false
             limpiarSeleccionMasiva()
-        }
+        },
+        onFinish: () => {
+            guardandoEstado.value = false
+        },
     })
 }
 
@@ -263,7 +291,8 @@ const abrirModalEstadoMasivo = () => {
 }
 
 const guardarEstadoMasivo = () => {
-    if (!nuevoEstadoMasivoId.value || !repuestosSeleccionados.value.length) return
+    if (!nuevoEstadoMasivoId.value || !repuestosSeleccionados.value.length || guardandoEstadoMasivo.value) return
+    guardandoEstadoMasivo.value = true
 
     router.put('/visitas-tecnicas/repuestos/estado/masivo', {
         repuesto_ids: repuestosSeleccionados.value,
@@ -274,7 +303,10 @@ const guardarEstadoMasivo = () => {
         onSuccess: () => {
             modalEstadoMasivo.value = false
             limpiarSeleccionMasiva()
-        }
+        },
+        onFinish: () => {
+            guardandoEstadoMasivo.value = false
+        },
     })
 }
 
@@ -286,7 +318,8 @@ const puedeActualizar = (repuesto) => {
 }
 
 const estadoGeneralVisita = (visita) => {
-    if (!visita.tienePendientes) {
+    const tienePendientesParaRol = props.es_asesor ? visita.tienePendientesAsesor : visita.tienePendientesAsistente
+    if (!tienePendientesParaRol) {
         return 'Visita cerrada'
     }
 
@@ -294,7 +327,8 @@ const estadoGeneralVisita = (visita) => {
 }
 
 const colorEstadoGeneralVisita = (visita) => {
-    return visita.tienePendientes
+    const tienePendientesParaRol = props.es_asesor ? visita.tienePendientesAsesor : visita.tienePendientesAsistente
+    return tienePendientesParaRol
         ? 'border-amber-200 bg-amber-50 text-amber-800'
         : 'border-lime-200 bg-lime-50 text-lime-800'
 }
@@ -331,7 +365,7 @@ function agruparRepuestosPorEquipo(repuestos) {
 
     repuestos.forEach((repuesto) => {
         const codigoEquipo = repuesto.equipo ?? 'Sin equipo'
-        const nombreEquipo = repuesto.nombre_equipo ?? ''
+        const nombreEquipo = repuesto.nombre_equipo || codigoEquipo || 'Equipo sin descripción'
         const key = `${codigoEquipo}::${nombreEquipo}`
 
         if (!grupos[key]) {
@@ -388,6 +422,7 @@ const actualizarPantalla = () => {
 
 onMounted(() => {
     actualizarPantalla()
+    seleccionarVisitaDesdeQuery()
     window.addEventListener('resize', actualizarPantalla)
 })
 
@@ -403,15 +438,15 @@ onBeforeUnmount(() => {
         <Head title="Gestión de Repuestos" />
 
         <template #header>
-            <h2 class="text-xl font-semibold leading-tight text-gray-800">
+            <h2 class="text-xl font-semibold leading-tight text-stone-900">
                 {{ es_asesor ? 'Repuestos — Cotización' : 'Repuestos — Facturación' }}
             </h2>
         </template>
 
         <div class="bg-stone-100 px-3 py-4 sm:px-4 sm:py-6 lg:px-8">
             <div class="mx-auto max-w-7xl">
-                <div class="rounded-[26px] border border-stone-200 bg-white p-3 shadow-sm sm:p-3.5">
-                    <div class="flex flex-col gap-2.5 xl:flex-row xl:items-center">
+                <div class="rounded-xl border border-stone-200 bg-white p-4 shadow-sm">
+                    <div class="flex flex-col gap-3 xl:flex-row xl:items-center">
                         <input
                             v-model="filtroBuscarVisita"
                             type="text"
@@ -422,12 +457,12 @@ onBeforeUnmount(() => {
                 </div>
 
                 <div
-                    class="mt-3 overflow-hidden rounded-[28px] border border-stone-200 bg-white shadow-sm"
+                    class="mt-3 overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm"
                     :class="esMovil ? 'overflow-visible' : ''"
                     :style="{ height: esMovil ? 'auto' : 'calc(100vh - 14.5rem)' }"
                 >
                     <div v-if="visitasFiltradas.length === 0" :class="esMovil ? 'flex items-center justify-center p-8 text-center' : 'flex h-full items-center justify-center p-8 text-center'">
-                        <p class="text-sm text-stone-500">No hay repuestos con ese filtro.</p>
+                        <p class="text-sm text-stone-500">No hay repuestos gestionar</p>
                     </div>
 
                     <template v-else>
@@ -438,20 +473,20 @@ onBeforeUnmount(() => {
                                     :key="visita.visita_id"
                                     type="button"
                                     @click="seleccionarVisita(visita.visita_id)"
-                                    class="mb-2.5 block w-full rounded-[22px] border border-stone-200 bg-white p-3.5 text-left shadow-sm last:mb-0"
+                                    class="mb-2.5 block w-full rounded-xl border border-stone-200 bg-white p-4 text-left shadow-sm last:mb-0"
                                     :class="visitaSeleccionada?.visita_id === visita.visita_id ? 'border-l-[3px] border-l-[#C8102E] bg-red-50/30' : ''"
                                 >
                                     <div class="flex flex-wrap items-center gap-2">
                                         <p class="min-w-0 flex-1 truncate text-sm font-bold text-stone-900">{{ visita.cliente ?? '—' }}</p>
-                                        <span class="rounded-full border px-2 py-0.5 text-[11px] font-semibold" :class="colorEstadoGeneralVisita(visita)">{{ estadoGeneralVisita(visita) }}</span>
+                                        <span class="rounded-full border px-2 py-0.5 text-xs font-semibold" :class="colorEstadoGeneralVisita(visita)">{{ estadoGeneralVisita(visita) }}</span>
                                     </div>
-                                    <div class="mt-1.5 space-y-0.5 text-[11px] text-stone-500">
+                                    <div class="mt-1.5 space-y-0.5 text-xs text-stone-500">
                                         <p class="truncate"><span class="font-semibold text-stone-600">NIT:</span> {{ visita.nit ?? '—' }}</p>
                                         <p class="truncate"><span class="font-semibold text-stone-600">Técnico:</span> {{ visita.tecnico ?? '—' }}</p>
                                         <p class="truncate"><span class="font-semibold text-stone-600">Dirección:</span> {{ visita.direccion ?? '—' }}</p>
                                     </div>
                                     <div class="mt-2.5">
-                                        <span class="rounded-full border px-2 py-0.5 text-[11px] font-semibold" :class="colorChipVisita()">Visita #{{ visita.visita_id }}</span>
+                                        <span class="rounded-full border px-2 py-0.5 text-xs font-semibold" :class="colorChipVisita()">Visita #{{ visita.visita_id }}</span>
                                     </div>
                                 </button>
                             </div>
@@ -474,9 +509,9 @@ onBeforeUnmount(() => {
                                     <div class="border-b border-stone-200 bg-white px-4 py-3.5">
                                         <div class="flex flex-wrap items-center gap-2">
                                             <h3 class="text-base font-bold text-stone-900">{{ visitaSeleccionada.cliente ?? '—' }}</h3>
-                                            <span class="rounded-full border px-2 py-0.5 text-[11px] font-semibold" :class="colorChipVisita()">Visita #{{ visitaSeleccionada.visita_id }}</span>
+                                            <span class="rounded-full border px-2 py-0.5 text-xs font-semibold" :class="colorChipVisita()">Visita #{{ visitaSeleccionada.visita_id }}</span>
                                         </div>
-                                        <div class="mt-1.5 space-y-0.5 text-[11px] text-stone-500">
+                                        <div class="mt-1.5 space-y-0.5 text-xs text-stone-500">
                                             <p><span class="font-semibold text-stone-600">NIT:</span> {{ visitaSeleccionada.nit ?? '—' }}</p>
                                             <p><span class="font-semibold text-stone-600">Técnico:</span> {{ visitaSeleccionada.tecnico ?? '—' }}</p>
                                             <p><span class="font-semibold text-stone-600">Dirección:</span> {{ visitaSeleccionada.direccion ?? '—' }}</p>
@@ -506,15 +541,15 @@ onBeforeUnmount(() => {
                                         <section
                                             v-for="(equipo, equipoIndex) in visitaSeleccionada.equipos"
                                             :key="equipo.key"
-                                            class="overflow-hidden rounded-[22px] border bg-white shadow-sm"
+                                            class="overflow-hidden rounded-xl border bg-white shadow-sm"
                                             :class="colorSeccionEquipo(equipo)"
                                         >
                                             <div class="border-b border-stone-200 bg-stone-50 px-4 py-2.5">
                                                 <div class="min-w-0">
-                                                    <p class="text-[11px] font-medium uppercase tracking-[0.16em] text-stone-500">{{ equipo.codigo }}</p>
+                                                    <p class="text-xs font-medium uppercase tracking-[0.16em] text-stone-500">{{ equipo.codigo }}</p>
                                                     <div class="mt-1 flex flex-wrap items-center gap-2">
                                                         <h4 class="text-sm font-medium text-stone-900">{{ equipo.nombre || 'Equipo sin descripción' }}</h4>
-                                                        <span class="rounded-full bg-stone-900 px-2 py-0.5 text-[11px] font-semibold text-white">
+                                                        <span class="rounded-full border border-stone-200 bg-stone-100 px-2 py-0.5 text-xs font-semibold text-stone-700">
                                                             {{ equipo.repuestos.length }} {{ equipo.repuestos.length === 1 ? 'repuesto' : 'repuestos' }}
                                                         </span>
                                                     </div>
@@ -524,7 +559,7 @@ onBeforeUnmount(() => {
                                             <div class="space-y-2.5 p-2.5">
                                                 <div
                                                     v-if="equipoIndex === 0 && (repuestosSeleccionados.length || hayGestionablesEnVista)"
-                                                    class="flex items-center gap-2 rounded-[18px] border border-stone-200 bg-stone-50 px-3.5 py-3"
+                                                    class="flex items-center gap-2 rounded-lg border border-stone-200 bg-stone-50 px-3.5 py-3"
                                                 >
                                                     <input
                                                         type="checkbox"
@@ -539,7 +574,7 @@ onBeforeUnmount(() => {
                                                 <article
                                                     v-for="r in equipo.repuestos"
                                                     :key="r.id"
-                                                    class="rounded-[18px] border border-stone-200 bg-white p-3.5 transition"
+                                                    class="rounded-lg border border-stone-200 bg-white p-3.5 transition"
                                                     :class="checkboxDeshabilitado(r) ? 'opacity-60' : ''"
                                                 >
                                                     <div class="flex items-start gap-3">
@@ -552,8 +587,11 @@ onBeforeUnmount(() => {
                                                         />
 
                                                         <div class="min-w-0 flex-1">
-                                                            <p class="text-sm font-semibold text-stone-900">{{ r.nombre_repuesto ?? '—' }}</p>
-                                                            <div class="mt-1.5 space-y-0.5 text-[11px] text-stone-500">
+                                                            <div class="flex items-center gap-2">
+                                                                <p class="text-sm font-semibold text-stone-900">{{ r.nombre_repuesto ?? '—' }}</p>
+                                                                <span v-if="r.es_urgente" class="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700">URGENTE</span>
+                                                            </div>
+                                                            <div class="mt-1.5 space-y-0.5 text-xs text-stone-500">
                                                                 <p><span class="font-semibold text-stone-600">Codigo Max:</span> {{ r.codigo ?? '—' }}</p>
                                                                 <p><span class="font-semibold text-stone-600">Codigo Comodidad:</span> {{ r.proveedor ?? '—' }}</p>
                                                                 <p><span class="font-semibold text-stone-600">Cantidad:</span> {{ r.cantidad }}</p>
@@ -561,7 +599,7 @@ onBeforeUnmount(() => {
                                                         </div>
                                                     </div>
                                                     <div class="mt-2.5 flex items-center justify-between gap-3">
-                                                        <span class="rounded-full border px-2.5 py-1 text-[11px] font-semibold" :class="tonoEstadoFila(r).chip">
+                                                        <span class="rounded-full border px-2.5 py-1 text-xs font-semibold" :class="tonoEstadoFila(r).chip">
                                                             {{ estadoChipLabel(r.estado) }}
                                                         </span>
                                                         <button
@@ -569,13 +607,13 @@ onBeforeUnmount(() => {
                                                             type="button"
                                                             @click="abrirModalEstado(r)"
                                                             :class="esGestionado(r) ? 'bg-[#639922] hover:bg-[#4f7a1d]' : 'bg-[#C8102E] hover:bg-[#a50d26]'"
-                                                            class="min-h-11 rounded-xl px-4 text-[11px] font-semibold text-white transition"
+                                                            class="min-h-11 rounded-xl px-4 text-xs font-semibold text-white transition"
                                                         >
                                                             {{ esGestionado(r) ? 'Listo' : 'Gestionar' }}
                                                         </button>
                                                         <span
                                                             v-else
-                                                            class="text-[11px] font-semibold text-stone-500"
+                                                            class="text-xs font-semibold text-stone-500"
                                                         >
                                                             --
                                                         </span>
@@ -596,22 +634,22 @@ onBeforeUnmount(() => {
                                         :key="visita.visita_id"
                                         type="button"
                                         @click="seleccionarVisita(visita.visita_id)"
-                                        class="mb-2.5 block w-full rounded-[22px] border border-stone-200 bg-white p-3.5 text-left shadow-sm last:mb-0"
+                                        class="mb-2.5 block w-full rounded-xl border border-stone-200 bg-white p-4 text-left shadow-sm last:mb-0"
                                         :class="visitaSeleccionada?.visita_id === visita.visita_id ? 'border-l-[3px] border-l-[#C8102E] bg-red-50/30' : ''"
                                     >
                                         <div class="flex flex-wrap items-center gap-2">
                                             <p class="min-w-0 flex-1 truncate text-sm font-bold text-stone-900">{{ visita.cliente ?? '—' }}</p>
                                         </div>
-                                        <div class="mt-1.5 space-y-0.5 text-[11px] text-stone-500">
+                                        <div class="mt-1.5 space-y-0.5 text-xs text-stone-500">
                                             <p class="truncate"><span class="font-semibold text-stone-600">NIT:</span> {{ visita.nit ?? '—' }}</p>
                                             <p class="truncate"><span class="font-semibold text-stone-600">Técnico:</span> {{ visita.tecnico ?? '—' }}</p>
                                             <p class="truncate"><span class="font-semibold text-stone-600">Dirección:</span> {{ visita.direccion ?? '—' }}</p>
                                         </div>
                                         <div class="mt-2.5">
-                                            <span class="rounded-full border px-2 py-0.5 text-[11px] font-semibold" :class="colorEstadoGeneralVisita(visita)">{{ estadoGeneralVisita(visita) }}</span>
+                                            <span class="rounded-full border px-2 py-0.5 text-xs font-semibold" :class="colorEstadoGeneralVisita(visita)">{{ estadoGeneralVisita(visita) }}</span>
                                         </div>
                                         <div class="mt-2.5">
-                                            <span class="rounded-full border px-2 py-0.5 text-[11px] font-semibold" :class="colorChipVisita()">Visita #{{ visita.visita_id }}</span>
+                                            <span class="rounded-full border px-2 py-0.5 text-xs font-semibold" :class="colorChipVisita()">Visita #{{ visita.visita_id }}</span>
                                         </div>
                                     </button>
                                 </div>
@@ -624,11 +662,11 @@ onBeforeUnmount(() => {
                                             <h3 class="text-xl font-bold text-stone-900">{{ visitaSeleccionada.cliente ?? '—' }}</h3>
                                         </div>
                                         <div class="mt-2.5">
-                                            <span class="rounded-full border px-2.5 py-1 text-[11px] font-semibold" :class="colorChipVisita()">
+                                            <span class="rounded-full border px-2.5 py-1 text-xs font-semibold" :class="colorChipVisita()">
                                                 Visita #{{ visitaSeleccionada.visita_id }}
                                             </span>
                                         </div>
-                                        <div class="mt-1.5 grid gap-0.5 text-[11px] text-stone-500 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                                        <div class="mt-1.5 grid gap-0.5 text-xs text-stone-500 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
                                             <p><span class="font-semibold text-stone-600">NIT:</span> {{ visitaSeleccionada.nit ?? '—' }}</p>
                                             <p><span class="font-semibold text-stone-600">Técnico:</span> {{ visitaSeleccionada.tecnico ?? '—' }}</p>
                                             <p class="lg:col-span-2"><span class="font-semibold text-stone-600">Dirección:</span> {{ visitaSeleccionada.direccion ?? '—' }}</p>
@@ -639,14 +677,14 @@ onBeforeUnmount(() => {
                                         <section
                                             v-for="(equipo, equipoIndex) in visitaSeleccionada.equipos"
                                             :key="equipo.key"
-                                            class="mb-4 overflow-hidden rounded-[22px] border bg-white shadow-sm last:mb-0"
+                                            class="mb-4 overflow-hidden rounded-xl border bg-white shadow-sm last:mb-0"
                                             :class="colorSeccionEquipo(equipo)"
                                         >
                                             <div class="border-b border-stone-200 bg-stone-50 px-4 py-3">
                                                 <div class="flex flex-wrap items-center gap-2">
-                                                    <p class="text-[11px] font-medium uppercase tracking-[0.16em] text-stone-500">{{ equipo.codigo }}</p>
+                                                    <p class="text-xs font-medium uppercase tracking-[0.16em] text-stone-500">{{ equipo.codigo }}</p>
                                                     <h4 class="text-sm font-medium text-stone-900">{{ equipo.nombre || 'Equipo sin descripción' }}</h4>
-                                                    <span class="rounded-full bg-stone-900 px-2 py-0.5 text-[11px] font-semibold text-white">
+                                                    <span class="rounded-full border border-stone-200 bg-stone-100 px-2 py-0.5 text-xs font-semibold text-stone-700">
                                                         {{ equipo.repuestos.length }} {{ equipo.repuestos.length === 1 ? 'repuesto' : 'repuestos' }}
                                                     </span>
                                                 </div>
@@ -671,13 +709,13 @@ onBeforeUnmount(() => {
                                                                     type="button"
                                                                     @click="abrirModalEstadoMasivo"
                                                                     :disabled="!repuestosSeleccionados.length"
-                                                                    class="inline-flex min-h-8 items-center rounded-lg bg-[#639922] px-3 text-[11px] font-semibold text-white transition hover:bg-[#4f7a1d] disabled:cursor-not-allowed disabled:opacity-50"
+                                                                    class="inline-flex min-h-8 items-center rounded-lg bg-[#639922] px-3 text-xs font-semibold text-white transition hover:bg-[#4f7a1d] disabled:cursor-not-allowed disabled:opacity-50"
                                                                 >
                                                                     Gestión masiva
                                                                 </button>
                                                             </th>
                                                         </tr>
-                                                        <tr class="border-b border-stone-200 text-[11px] uppercase tracking-[0.12em] text-stone-500">
+                                                        <tr class="border-b border-stone-200 text-xs uppercase tracking-[0.12em] text-stone-500">
                                                             <th class="w-[48px] px-2 py-1.5 font-semibold text-center">
                                                                 <input
                                                                     type="checkbox"
@@ -711,12 +749,17 @@ onBeforeUnmount(() => {
                                                                     @change="alternarSeleccionRepuesto(r)"
                                                                 />
                                                             </td>
-                                                            <td class="px-2 py-2 text-sm font-medium text-stone-900">{{ r.nombre_repuesto ?? '—' }}</td>
-                                                            <td class="px-2 py-2 text-[11px] text-stone-700">{{ r.codigo ?? '—' }}</td>
-                                                            <td class="px-2 py-2 text-[11px] text-stone-700">{{ r.proveedor ?? '—' }}</td>
+                                                             <td class="px-2 py-2 text-sm font-medium text-stone-900">
+                                                                 <div class="flex items-center gap-2">
+                                                                     <span>{{ r.nombre_repuesto ?? '—' }}</span>
+                                                                     <span v-if="r.es_urgente" class="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700">URGENTE</span>
+                                                                 </div>
+                                                             </td>
+                                                            <td class="px-2 py-2 text-xs text-stone-700">{{ r.codigo ?? '—' }}</td>
+                                                            <td class="px-2 py-2 text-xs text-stone-700">{{ r.proveedor ?? '—' }}</td>
                                                             <td class="w-[70px] px-2 py-2 text-center text-sm font-medium text-stone-900">{{ r.cantidad }}</td>
                                                             <td class="px-2 py-2">
-                                                                <span class="rounded-full border px-2 py-0.5 text-[11px] font-semibold" :class="tonoEstadoFila(r).chip">
+                                                                <span class="rounded-full border px-2 py-0.5 text-xs font-semibold" :class="tonoEstadoFila(r).chip">
                                                                     {{ estadoChipLabel(r.estado) }}
                                                                 </span>
                                                             </td>
@@ -727,13 +770,13 @@ onBeforeUnmount(() => {
                                                                         type="button"
                                                                         @click="abrirModalEstado(r)"
                                                                         :class="esGestionado(r) ? 'bg-[#639922] hover:bg-[#4f7a1d]' : 'bg-[#C8102E] hover:bg-[#a50d26]'"
-                                                                        class="inline-flex h-8 items-center rounded-lg px-3 text-[11px] font-semibold text-white transition"
+                                                                        class="inline-flex h-8 items-center rounded-lg px-3 text-xs font-semibold text-white transition"
                                                                     >
                                                                         {{ esGestionado(r) ? 'Listo' : 'Gestionar' }}
                                                                     </button>
                                                                     <span
                                                                         v-else
-                                                                        class="inline-flex h-8 items-center rounded-lg px-3 text-[11px] font-semibold text-stone-500"
+                                                                        class="inline-flex h-8 items-center rounded-lg px-3 text-xs font-semibold text-stone-500"
                                                                     >
                                                                         --
                                                                     </span>
@@ -795,9 +838,16 @@ onBeforeUnmount(() => {
                         class="min-h-11 flex-1 rounded-xl border border-stone-300 px-4 py-3 text-base font-semibold text-stone-700 transition hover:bg-stone-50 active:bg-stone-100">
                         Cancelar
                     </button>
-                    <button @click="guardarEstado" :disabled="!nuevoEstadoId"
+                    <button @click="guardarEstado" :disabled="!nuevoEstadoId || guardandoEstado"
                         class="min-h-11 flex-1 rounded-xl bg-[#639922] px-4 py-3 text-base font-semibold text-white transition hover:bg-[#4f7a1d] active:bg-[#3d6115] disabled:cursor-not-allowed disabled:opacity-50">
-                        Guardar
+                        <span v-if="guardandoEstado" class="inline-flex items-center justify-center gap-2">
+                            <svg class="h-4 w-4 animate-spin text-white" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                            </svg>
+                            Procesando...
+                        </span>
+                        <span v-else>Guardar</span>
                     </button>
                 </div>
             </div>
@@ -841,9 +891,16 @@ onBeforeUnmount(() => {
                         class="min-h-11 flex-1 rounded-xl border border-stone-300 px-4 py-3 text-base font-semibold text-stone-700 transition hover:bg-stone-50 active:bg-stone-100">
                         Cancelar
                     </button>
-                    <button @click="guardarEstadoMasivo" :disabled="!nuevoEstadoMasivoId || !repuestosSeleccionados.length"
+                    <button @click="guardarEstadoMasivo" :disabled="!nuevoEstadoMasivoId || !repuestosSeleccionados.length || guardandoEstadoMasivo"
                         class="min-h-11 flex-1 rounded-xl bg-[#639922] px-4 py-3 text-base font-semibold text-white transition hover:bg-[#4f7a1d] active:bg-[#3d6115] disabled:cursor-not-allowed disabled:opacity-50">
-                        Guardar
+                        <span v-if="guardandoEstadoMasivo" class="inline-flex items-center justify-center gap-2">
+                            <svg class="h-4 w-4 animate-spin text-white" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                            </svg>
+                            Procesando...
+                        </span>
+                        <span v-else>Guardar</span>
                     </button>
                 </div>
             </div>

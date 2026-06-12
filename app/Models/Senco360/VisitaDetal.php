@@ -12,7 +12,7 @@ class VisitaDetal extends Model
 
     protected $fillable = [
         'ID_ENC_VISITA', 'ID_COD_MAX', 'TITULO','SERIAL',
-        'DESCRIPCION_FALLA', 'ID_SOLUCION', 'OBSERVACIONES',
+        'DESCRIPCION_FALLA', 'ID_SOLUCION', 'ID_TIPO_MANT', 'OBSERVACIONES',
     ];
 
     public function encabezado()
@@ -25,6 +25,11 @@ class VisitaDetal extends Model
         return $this->belongsTo(TipoSolucion::class, 'ID_SOLUCION', 'ID');
     }
 
+    public function tipoMant()
+    {
+        return $this->belongsTo(TipoMant::class, 'ID_TIPO_MANT', 'ID');
+    }
+
     public function tiposSolucion()
     {
         return $this->belongsToMany(
@@ -35,6 +40,18 @@ class VisitaDetal extends Model
             'ID',
             'ID'
         );
+    }
+
+    public function tiposFalla()
+    {
+        return $this->belongsToMany(
+            TipoFalla::class,
+            'RT_visita_detal_falla',
+            'ID_VISITA_DETAL',
+            'ID_TIPO_FALLA',
+            'ID',
+            'ID'
+        )->withPivot('DESCRIPCION_OTROS');
     }
 
     public function solicitudesPartes()

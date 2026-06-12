@@ -35,6 +35,8 @@ class VisitaRepository
             'estadoActual',
             'detalle',
             'detalle.tipoSolucion',
+            'detalle.tipoMant',
+            'detalle.tiposFalla',
             'detalle.tiposSolucion',
             'detalle.solicitudesPartes',
             'detalle.solicitudesPartes.estado',

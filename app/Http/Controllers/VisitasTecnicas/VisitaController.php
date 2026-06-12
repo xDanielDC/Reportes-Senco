@@ -4,7 +4,10 @@ namespace App\Http\Controllers\VisitasTecnicas;
 use App\Http\Controllers\Controller;
 use App\Models\RutaTecnica;
 use App\Models\Senco360\TipoServicio;
+use App\Models\Senco360\TipoFalla;
+use App\Models\Senco360\TipoMant;
 use App\Models\Senco360\TipoSolucion;
+use App\Models\Senco360\VisitaEncab;
 use App\Models\Senco360\VisitaEstado;
 use App\Models\Senco360\VisitaEstadoHistorico;
 use App\Repositories\VisitasTecnicas\VisitaRepository;
@@ -15,6 +18,12 @@ use Inertia\Inertia;
 use Inertia\Response;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Log;
+use App\Mail\InformeTecnicoVisitaMail;
+use App\Mail\NotificacionSolicitudCotizacion;
+use App\Services\VisitasTecnicas\InformeTecnicoVisitaService;
+use App\Models\Senco360\SolicitudParte;
 
 class VisitaController extends Controller
 {
@@ -23,7 +32,10 @@ class VisitaController extends Controller
     private const ESTADO_COMPLETADO = 2;
     private const ESTADO_PENDIENTE_REPUESTOS = 6;
 
-    public function __construct(protected VisitaRepository $repo)
+    public function __construct(
+        protected VisitaRepository $repo,
+        protected InformeTecnicoVisitaService $informeTecnicoService
+    )
     {
         $this->middleware('permission:visitastecnicas.ver');
     }
@@ -68,6 +80,36 @@ class VisitaController extends Controller
         abort_if(!$visita, 404, 'Visita no encontrada.');
 
         return $visita;
+    }
+
+    private function abortarSiNoFinalizada($visita): void
+    {
+        abort_if(
+            (int) $visita->ID_ESTADO_ACTUAL !== self::ESTADO_COMPLETADO,
+            403,
+            'El informe técnico solo está disponible para visitas finalizadas.'
+        );
+    }
+
+    private function enviarInformeTecnico(VisitaEncab $visita, array $destinatarios): void
+    {
+        $destinatarios = collect($destinatarios)
+            ->filter(fn ($email) => filled($email) && filter_var($email, FILTER_VALIDATE_EMAIL))
+            ->map(fn ($email) => strtolower(trim($email)))
+            ->unique()
+            ->values();
+
+        if ($destinatarios->isEmpty()) {
+            Log::info('No hay destinatarios válidos para informe técnico de visita', ['visita_id' => $visita->ID]);
+            return;
+        }
+
+        $pdfContenido = $this->informeTecnicoService->generarPdf($visita)->output();
+        $nombreArchivo = $this->informeTecnicoService->nombreArchivo($visita);
+
+        foreach ($destinatarios as $email) {
+            Mail::to($email)->send(new InformeTecnicoVisitaMail($visita, $pdfContenido, $nombreArchivo));
+        }
     }
 
     public function reprogramarRuta(Request $request, string $id_visita): RedirectResponse
@@ -217,6 +259,7 @@ class VisitaController extends Controller
                     : null,
                 'nom_contacto' => $ruta->NomContacto,
                 'tel_contacto' => $ruta->TelContacto,
+                'es_propia'    => trim((string) $ruta->CodVendedor) === trim((string) $ruta->CodTecnico),
             ],
             'tipos_servicio' => TipoServicio::orderBy('TIPO_SERVICIO')->get(['ID', 'TIPO_SERVICIO']),
         ]);
@@ -225,7 +268,7 @@ class VisitaController extends Controller
     /**
      * Store — crear encabezado de visita
      */
-public function store(Request $request): RedirectResponse
+public function store(Request $request): JsonResponse|RedirectResponse
 {
     $esCapacitacion = $request->boolean('es_capacitacion');
     $estadoReprogramadoId = $this->obtenerEstadoId('Reprogramado');
@@ -242,9 +285,10 @@ public function store(Request $request): RedirectResponse
         $rules['fecha_inicio'] = 'required|date';
         $rules['fecha_fin'] = 'required|date|after_or_equal:fecha_inicio';
         $rules['hora_inicio'] = 'required|date_format:H:i';
+        $rules['hora_fin'] = 'required|date_format:H:i';
         $rules['titulo'] = 'required|string|max:200';
         $rules['temas']  = 'nullable|string|max:1000';
-        $rules['firma']  = 'required|string'; // base64
+        $rules['firma']  = 'nullable|string'; // base64
         $rules['fotos']  = 'nullable|array';
         $rules['fotos.*']= 'nullable|image|max:5120';
         $rules['observaciones'] = 'nullable|string|max:1000';
@@ -253,7 +297,20 @@ public function store(Request $request): RedirectResponse
     $request->validate($rules);
 
     $user = auth()->user();
-    $this->obtenerRutaAsignadaOAbortar($request->id_visita);
+    $rutaAsignada = $this->obtenerRutaAsignadaOAbortar($request->id_visita);
+    $esRutaPropia = trim((string) $rutaAsignada->CodVendedor) === trim((string) $rutaAsignada->CodTecnico);
+
+    if ($esRutaPropia) {
+        $tipoServicio = TipoServicio::find($request->id_tipo_servicio);
+        $esTipoCapacitacion = str_contains(strtolower($tipoServicio?->TIPO_SERVICIO ?? ''), 'capacit');
+
+        abort_if(
+            !$esCapacitacion || !$esTipoCapacitacion,
+            422,
+            'Las visitas asignadas al mismo asesor solo pueden registrarse como capacitación.'
+        );
+    }
+
     $visitaExistente = \App\Models\Senco360\VisitaEncab::where('ID_VISITA', $request->id_visita)->first();
 
     abort_if(
@@ -292,19 +349,21 @@ public function store(Request $request): RedirectResponse
             'OBSERVACIONES'    => $request->observaciones,
         ]);
 
-        // 2. Guardar firma
-        $firmaBase64 = $request->firma;
-        if (str_contains($firmaBase64, ',')) {
-            $firmaBase64 = explode(',', $firmaBase64)[1];
+        // 2. Guardar firma si fue diligenciada
+        if ($request->filled('firma')) {
+            $firmaBase64 = $request->firma;
+            if (str_contains($firmaBase64, ',')) {
+                $firmaBase64 = explode(',', $firmaBase64)[1];
+            }
+            $firmaBlob = base64_decode($firmaBase64);
+            $rutaFirma = 'visitas/firmas/' . $visita->ID . '_firma.png';
+            \Illuminate\Support\Facades\Storage::disk('public')->put($rutaFirma, $firmaBlob);
+            \App\Models\Senco360\VisitaFoto::create([
+                'ID_DETALLE_VISITA' => $detal->ID,
+                'TIPO'              => 'FIRMA',
+                'RUTA_FOTO'         => $rutaFirma,
+            ]);
         }
-        $firmaBlob = base64_decode($firmaBase64);
-        $rutaFirma = 'visitas/firmas/' . $visita->ID . '_firma.png';
-        \Illuminate\Support\Facades\Storage::disk('public')->put($rutaFirma, $firmaBlob);
-        \App\Models\Senco360\VisitaFoto::create([
-            'ID_DETALLE_VISITA' => $detal->ID,
-            'TIPO'              => 'FIRMA',
-            'RUTA_FOTO'         => $rutaFirma,
-        ]);
 
         // 3. Guardar fotos
         if ($request->hasFile('fotos')) {
@@ -326,6 +385,22 @@ public function store(Request $request): RedirectResponse
             'OBSERVACIONES' => $request->observaciones ?? 'Capacitación completada',
             'ID_USUARIO'    => $user->id,
         ]);
+
+        $visitaFinalizada = $this->repo->findById($visita->ID, '');
+        if ($visitaFinalizada) {
+            $this->enviarInformeTecnico(
+                $visitaFinalizada,
+                $this->informeTecnicoService->destinatariosFinalizacion($visitaFinalizada, $user)
+            );
+        }
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Informe enviado exitosamente.',
+                'redirect' => route('visitastecnicas.visitas.index'),
+            ]);
+        }
 
         return redirect()->route('visitastecnicas.visitas.index')
             ->with('success', 'Capacitación registrada correctamente.');
@@ -417,6 +492,7 @@ public function show(int $id): Response
                 : null,
             'nom_contacto'  => $visita->rutaTecnica?->NomContacto,
             'tel_contacto' => $visita->rutaTecnica?->TelContacto,
+            'observaciones_ruta' => $visita->rutaTecnica?->Observaciones,
         ],
         'equipos' => $visita->detalle->map(fn($e) => [
             'soluciones'        => $e->tiposSolucion->isNotEmpty()
@@ -425,10 +501,20 @@ public function show(int $id): Response
             'soluciones_ids'    => $e->tiposSolucion->isNotEmpty()
                 ? $e->tiposSolucion->pluck('ID')->map(fn ($id) => (int) $id)->values()
                 : collect([$e->ID_SOLUCION])->filter()->map(fn ($id) => (int) $id)->values(),
+            'fallas'           => $e->tiposFalla->isNotEmpty()
+                ? $e->tiposFalla->map(fn ($falla) => [
+                    'id' => (int) $falla->ID,
+                    'descripcion' => $falla->DESCRIPCION,
+                    'descripcion_otros' => $falla->pivot?->DESCRIPCION_OTROS,
+                ])->values()
+                : collect([$e->DESCRIPCION_FALLA])->filter()->values(),
+            'fallas_ids'       => $e->tiposFalla->pluck('ID')->map(fn ($id) => (int) $id)->values(),
             'id'               => $e->ID,
             'id_cod_max'       => $e->ID_COD_MAX,
             'titulo'           => $e->TITULO,
             'serial'           => $e->SERIAL,
+            'tipo_mant'        => $e->tipoMant?->TIPO_MANT,
+            'id_tipo_mant'     => $e->ID_TIPO_MANT,
             'descripcion_falla'=> $e->DESCRIPCION_FALLA,
             'solucion'         => $e->tipoSolucion?->TIPO_SOLUCION,
             'solucion_id'      => $e->ID_SOLUCION,
@@ -448,8 +534,11 @@ public function show(int $id): Response
                 'estado'     => $r->estado?->ESTADO,
                 'estado_id'  => $r->ID_ESTADO,
                 'observacion'=> $r->OBSERVACION,
+                'es_urgente' => (bool) $r->ES_URGENTE,
             ]),
         ]),
+        'tipos_mant'          => TipoMant::orderBy('TIPO_MANT')->get(['ID', 'TIPO_MANT']),
+        'tipos_falla'         => TipoFalla::orderBy('DESCRIPCION')->get(['ID', 'DESCRIPCION']),
         'tipos_solucion'      => TipoSolucion::orderBy('TIPO_SOLUCION')->get(['ID', 'TIPO_SOLUCION']),
         'estados_repuesto' => VisitaEstado::whereIn('ID', [13, 14, 15, 16, 17, 18, 19, 27])->get(['ID', 'ESTADO']),
         'historial'           => $visita->historialEstados->map(fn($h) => [
@@ -495,10 +584,7 @@ public function show(int $id): Response
         $visita = $this->obtenerVisitaOAbortar($id);
 
         // Determinar estado final
-        $esCapacitacion = str_contains(
-            strtolower($visita->tipoServicio?->TIPO_SERVICIO ?? ''),
-            'capacit'
-        );
+        $esCapacitacion = $this->informeTecnicoService->esCapacitacion($visita);
 
         if ($esCapacitacion) {
             $estadoFinal = self::ESTADO_COMPLETADO;
@@ -562,6 +648,8 @@ public function show(int $id): Response
             $actualizacion['HORA_FIN'] = now()->format('H:i:s');
         }
 
+        $actualizacion['OBSERVACIONES'] = $request->observaciones;
+
         $this->repo->actualizar($id, $actualizacion);
 
         if (!$esCapacitacion && $request->filled('firma')) {
@@ -591,8 +679,49 @@ public function show(int $id): Response
 
         $this->repo->cambiarEstado($id, $estadoFinal, $request->observaciones ?? 'Visita finalizada');
 
+        if ((int) $estadoFinal === self::ESTADO_COMPLETADO) {
+            $visitaFinalizada = $this->repo->findById($id, '');
+            if ($visitaFinalizada) {
+                $this->enviarInformeTecnico(
+                    $visitaFinalizada,
+                    $this->informeTecnicoService->destinatariosFinalizacion($visitaFinalizada, auth()->user())
+                );
+            }
+        }
+
         return redirect()->route('visitastecnicas.visitas.index')
             ->with('success', 'Visita finalizada correctamente.');
+    }
+
+    public function descargarInforme(int $id)
+    {
+        $visita = $this->obtenerVisitaOAbortar($id);
+        $this->abortarSiNoFinalizada($visita);
+
+        return $this->informeTecnicoService
+            ->generarPdf($visita)
+            ->download($this->informeTecnicoService->nombreArchivo($visita));
+    }
+
+    public function reenviarInforme(Request $request, int $id): JsonResponse|RedirectResponse
+    {
+        $request->validate([
+            'correo' => 'required|email',
+        ]);
+
+        $visita = $this->obtenerVisitaOAbortar($id);
+        $this->abortarSiNoFinalizada($visita);
+
+        $this->enviarInformeTecnico($visita, [$request->correo]);
+
+        if ($request->expectsJson() || $request->wantsJson() || $request->ajax()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Informe reenviado correctamente.',
+            ]);
+        }
+
+        return back()->with('success', 'Informe reenviado correctamente.');
     }
 
     public function guardarBorrador(Request $request, int $id): JsonResponse
@@ -625,7 +754,7 @@ public function show(int $id): Response
 
     public function solicitarCotizacion(Request $request, int $id): JsonResponse|RedirectResponse
     {
-        \Log::info('solicitarCotizacion called', [
+        Log::info('solicitarCotizacion called', [
             'method' => $request->method(),
             'id' => $id,
             'body' => $request->all(),
@@ -638,17 +767,17 @@ public function show(int $id): Response
                 'fecha_inicio' => 'required|date',
                 'hora_inicio' => 'required|date_format:H:i',
             ]);
-            \Log::info('Validación pasada', ['datos' => $validated]);
+            Log::info('Validación pasada', ['datos' => $validated]);
         } catch (\Exception $e) {
-            \Log::error('Error validación', ['error' => $e->getMessage()]);
+            Log::error('Error validación', ['error' => $e->getMessage()]);
             throw $e;
         }
 
         $visita = $this->obtenerVisitaOAbortar($id);
-        \Log::info('Visita cargada', ['visita_id' => $visita?->ID, 'estado' => $visita?->ID_ESTADO_ACTUAL]);
+        Log::info('Visita cargada', ['visita_id' => $visita?->ID, 'estado' => $visita?->ID_ESTADO_ACTUAL]);
 
         if ((int) $visita->ID_ESTADO_ACTUAL !== self::ESTADO_EN_PROCESO) {
-            \Log::warning('Estado incorrecto', ['estado_actual' => (int) $visita->ID_ESTADO_ACTUAL, 'esperado' => self::ESTADO_EN_PROCESO]);
+            Log::warning('Estado incorrecto', ['estado_actual' => (int) $visita->ID_ESTADO_ACTUAL, 'esperado' => self::ESTADO_EN_PROCESO]);
             return response()->json([
                 'success' => false,
                 'message' => 'La visita no se puede enviar a cotización en este estado. Estado actual: ' . $visita->estadoActual?->ESTADO,
@@ -673,10 +802,10 @@ public function show(int $id): Response
             ]))
         );
 
-        \Log::info('Verificación pendientes', ['hayPendientes' => $hayPendientes, 'detalles' => $visita->detalle->count()]);
+        Log::info('Verificación pendientes', ['hayPendientes' => $hayPendientes, 'detalles' => $visita->detalle->count()]);
 
         if (!$hayPendientes) {
-            \Log::warning('No hay repuestos pendientes', ['visita_id' => $id]);
+            Log::warning('No hay repuestos pendientes', ['visita_id' => $id]);
             return response()->json([
                 'success' => false,
                 'message' => 'La visita no tiene repuestos pendientes para cotización. Debe agregar al menos un repuesto.',
@@ -689,13 +818,116 @@ public function show(int $id): Response
             'HORA_INICIO' => $request->hora_inicio,
             'DETALLE_PUBLICADO_COTIZACION' => 1,
         ]);
-        \Log::info('Visita actualizada');
+        Log::info('Visita actualizada');
 
         $this->repo->cambiarEstado($id, self::ESTADO_PENDIENTE_REPUESTOS, $request->observaciones ?? 'Visita enviada a cotización');
-        \Log::info('Estado cambiado a PENDIENTE_REPUESTOS');
+        Log::info('Estado cambiado a PENDIENTE_REPUESTOS');
+
+        // Enviar notificación al asesor/técnico
+        try {
+            $ruta = $visita->rutaTecnica ?? RutaTecnica::find($visita->ID_VISITA);
+            Log::info('Buscando ruta técnica para notificación', [
+                'visita_id' => $id,
+                'id_visita' => $visita->ID_VISITA,
+                'ruta_id' => $ruta?->IdVisita,
+                'CodVendedor' => $ruta?->CodVendedor,
+            ]);
+
+            if ($ruta && $ruta->CodVendedor) {
+                $codigoVendedor = trim((string) $ruta->CodVendedor);
+                $codigoTecnico = trim((string) $ruta->CodTecnico);
+
+                $asesor = \App\Models\User::whereRaw('LTRIM(RTRIM(codigo_vendedor)) = ?', [$codigoVendedor])
+                    ->orWhere('cedula', $codigoVendedor)
+                    ->orWhere('username', $codigoVendedor)
+                    ->first();
+
+                $tecnico = null;
+                if ($codigoTecnico !== '') {
+                    $tecnico = \App\Models\User::whereRaw('LTRIM(RTRIM(codigo_vendedor)) = ?', [$codigoTecnico])
+                        ->orWhere('cedula', $codigoTecnico)
+                        ->orWhere('username', $codigoTecnico)
+                        ->first();
+                }
+
+                $tecnicoNombre = $tecnico?->name ?? ($codigoTecnico !== '' ? $codigoTecnico : null);
+
+                $repuestos = collect($visita->detalle)
+                    ->flatMap(function ($detalle) {
+                        return collect($detalle->solicitudesPartes)
+                            ->filter(fn ($repuesto) => (int) $repuesto->ID_ESTADO === 13)
+                            ->map(function ($repuesto) {
+                                return [
+                                    'id_cod_max' => $repuesto->ID_COD_MAX_PARTES,
+                                    'cantidad' => $repuesto->CANTIDAD,
+                                    'detalle_id' => $repuesto->ID,
+                                ];
+                            });
+                    })
+                    ->filter()
+                    ->values();
+
+                $repuestosInfo = [];
+                if ($repuestos->isNotEmpty()) {
+                    $codigos = $repuestos->pluck('id_cod_max')->unique()->values()->all();
+                    $repuestosInfo = DB::connection('senco360')
+                        ->table('vRepuestosMax')
+                        ->whereIn('Codigo Repuesto', $codigos)
+                        ->get()
+                        ->keyBy('Codigo Repuesto')
+                        ->map(function ($row) {
+                            return [
+                                'id_cod_max' => $row->{'Codigo Repuesto'},
+                                'codigo_comodidad' => $row->{'Codigo Proveedor'} ?? null,
+                                'nombre' => $row->{'Descripcion Repuesto'} ?? null,
+                            ];
+                        })
+                        ->toArray();
+                }
+
+                // Obtener observaciones desde las solicitudes de partes (SolicitudParte)
+                $detalleIds = $repuestos->pluck('detalle_id')->filter()->unique()->values()->all();
+                $solicitudesMap = [];
+                if (!empty($detalleIds)) {
+                    $solicitudesMap = SolicitudParte::whereIn('ID', $detalleIds)
+                        ->get()
+                        ->keyBy('ID');
+                }
+
+                $repuestosFinal = $repuestos->map(function ($repuesto) use ($repuestosInfo, $solicitudesMap) {
+                    $info = $repuestosInfo[$repuesto['id_cod_max']] ?? null;
+                    $observacion = $solicitudesMap[$repuesto['detalle_id']]->OBSERVACION ?? null;
+
+                    return [
+                        'codigo_max' => $repuesto['id_cod_max'],
+                        'codigo_comodidad' => $info['codigo_comodidad'] ?? null,
+                        'nombre' => $info['nombre'] ?? null,
+                        'cantidad' => $repuesto['cantidad'],
+                        'observacion' => $observacion,
+                    ];
+                })->values()->all();
+
+                $url = route('visitastecnicas.repuestos.index', ['visita_id' => $visita->ID]);
+
+                if ($asesor && $asesor->email) {
+                    Mail::to($asesor->email)->send(new NotificacionSolicitudCotizacion($visita, $asesor, $repuestosFinal, $url, $tecnicoNombre));
+                    Log::info('Correo enviado al asesor', ['email' => $asesor->email, 'asesor' => $asesor->name]);
+                } else {
+                    Log::warning('No se encontró asesor con código o correo', [
+                        'CodVendedor' => $codigoVendedor,
+                        'asesor_encontrado' => $asesor ? true : false,
+                        'email' => $asesor?->email,
+                    ]);
+                }
+            } else {
+                Log::warning('No se encontró ruta técnica', ['visita_id' => $id, 'ID_VISITA' => $visita->ID_VISITA]);
+            }
+        } catch (\Exception $e) {
+            Log::error('Error enviando correo de notificación', ['error' => $e->getMessage()]);
+        }
 
         if ($request->expectsJson()) {
-            \Log::info('Respondiendo con JSON');
+            Log::info('Respondiendo con JSON');
             return response()->json([
                 'success' => true,
                 'message' => 'Visita enviada a cotización correctamente.',

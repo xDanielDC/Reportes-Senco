@@ -48,6 +48,7 @@ class SolicitudParteController extends Controller
             'cantidad'        => 'required|integer|min:1',
             'observacion'     => 'nullable|string|max:255',
             'resolver_en_campo' => 'nullable|boolean',
+            'es_urgente'      => 'nullable|boolean',
         ]);
 
         $equipo = VisitaDetal::with('encabezado.rutaTecnica')->findOrFail($request->equipo_id);
@@ -59,6 +60,7 @@ class SolicitudParteController extends Controller
             'CANTIDAD'          => $request->cantidad,
             'ID_ESTADO'         => $request->boolean('resolver_en_campo') ? 19 : 13,
             'OBSERVACION'       => $request->observacion,
+            'ES_URGENTE'       => $request->boolean('es_urgente'),
         ]);
 
         return back()->with('success', 'Repuesto agregado correctamente.');
@@ -71,6 +73,7 @@ class SolicitudParteController extends Controller
             'observacion'=> 'nullable|string|max:255',
             'cantidad'   => 'nullable|integer|min:1',
             'resolver_en_campo' => 'nullable|boolean',
+            'es_urgente' => 'nullable|boolean',
         ]);
 
         $parte = SolicitudParte::with('detalle.encabezado.rutaTecnica')->findOrFail($id);
@@ -83,6 +86,7 @@ class SolicitudParteController extends Controller
             'ID_ESTADO'  => $estadoId,
             'OBSERVACION'=> $request->observacion ?? $parte->OBSERVACION,
             'CANTIDAD'   => $request->cantidad ?? $parte->CANTIDAD,
+            'ES_URGENTE' => $request->boolean('es_urgente'),
         ]);
 
         return back()->with('success', 'Repuesto actualizado correctamente.');

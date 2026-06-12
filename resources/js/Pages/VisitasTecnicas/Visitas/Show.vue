@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, nextTick, onMounted, watch } from 'vue'
+import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { Head, useForm, router } from '@inertiajs/vue3'
 import axios from 'axios'
 import AppLayout from '@/Layouts/AppLayout.vue'
@@ -7,6 +7,8 @@ import AppLayout from '@/Layouts/AppLayout.vue'
 const props = defineProps({
     visita:           { type: Object, required: true },
     equipos:          { type: Array,  default: () => [] },
+    tipos_mant:       { type: Array,  default: () => [] },
+    tipos_falla:      { type: Array,  default: () => [] },
     tipos_solucion:   { type: Array,  default: () => [] },
     historial:        { type: Array,  default: () => [] },
 })
@@ -159,6 +161,10 @@ const modalEquipo        = ref(false)
 const modalRepuesto      = ref(false)
 const modalFinalizar     = ref(false)
 const modalCotizacion    = ref(false)
+const modalCotizacionEnviada = ref(false)
+const modalReenviarInforme = ref(false)
+const modalInformeReenviado = ref(false)
+const modalFinalizacionExitosa = ref(false)
 const modalInstalacion   = ref(false)
 const modalSolucionesComplementarias = ref(false)
 const equipoEditandoId   = ref(null)
@@ -172,6 +178,11 @@ const repuestoEditorRef = ref(null)
 const fotosDespuesInstalacion = ref([])
 const equipoTieneRepuestosPrevios = ref(false)
 const modalGuardadoBorrador = ref(false)
+const fallasDropdownAbierto = ref(false)
+const fallasBusqueda = ref('')
+const descripcionOtros = ref('')
+const solucionesDropdownAbierto = ref(false)
+const solucionesBusqueda = ref('')
 
 const beforeExpandEnter = (el) => {
     el.style.height = '0'
@@ -215,6 +226,30 @@ const afterExpandLeave = (el) => {
     el.style.willChange = ''
 }
 
+const abrirFotoAmpliada = (url) => {
+    if (!url) return
+    fotoAmpliada.value = url
+}
+
+const cerrarFotoAmpliada = () => {
+    if (!fotoAmpliada.value) return
+    fotoAmpliada.value = null
+}
+
+const cerrarFotoAmpliadaConTecla = (event) => {
+    if (event.key === 'Escape' && fotoAmpliada.value) {
+        cerrarFotoAmpliada()
+    }
+}
+
+onMounted(() => {
+    window.addEventListener('keydown', cerrarFotoAmpliadaConTecla)
+})
+
+onUnmounted(() => {
+    window.removeEventListener('keydown', cerrarFotoAmpliadaConTecla)
+})
+
 // Helper para toggle secciones internas
 const toggleSeccion = (equipoId, seccion) => {
     const clave = `${equipoId}-${seccion}`
@@ -235,6 +270,8 @@ const repuestosBusqueda = ref('')
 const repuestosResultados = ref([])
 const repuestosCargando = ref(false)
 const repuestoSeleccionado = ref(null)
+const herramientasBuscada = ref(false)
+const repuestosBuscada = ref(false)
 
 let herramientaTimeout = null
 let repuestoTimeout = null
@@ -243,16 +280,19 @@ const limpiarBusquedaHerramientas = () => {
     herramientasBusqueda.value = ''
     herramientasResultados.value = []
     herramientasCargando.value = false
+    herramientasBuscada.value = false
 }
 
 const limpiarBusquedaRepuestos = () => {
     repuestosBusqueda.value = ''
     repuestosResultados.value = []
     repuestosCargando.value = false
+    repuestosBuscada.value = false
 }
 
 // Canvas firma
 const canvasFirma = ref(null)
+const firmaCanvasAlto = 180
 let dibujando = false
 
 // ── Forms ──────────────────────────────────────────────────
@@ -260,6 +300,8 @@ const formEquipo = useForm({
     visita_id: props.visita?.id ?? null,
     id_cod_max:        '',
     serial:            '',
+    id_tipo_mant:      '',
+    id_tipo_falla:     [],
     descripcion_falla: '',
     id_solucion:       [],
     observaciones:     '',
@@ -272,6 +314,7 @@ const formRepuesto = useForm({
     cantidad:    1,
     observacion: '',
     resolver_en_campo: false,
+    es_urgente: false,
 })
 
 // Referencias para fotos del equipo
@@ -283,11 +326,75 @@ const formServicio = useForm({
     hora_inicio: props.visita?.hora_inicio ? String(props.visita.hora_inicio).slice(0, 5) : '',
 })
 
+// --- Autoguardado temporal para correo_cliente y hora_inicio ---
+const SERVICE_STORAGE_KEY = `visita_servicio_${props.visita?.id ?? 'global'}`
+let serviceSaveTimeout = null
+
+const saveServiceFieldsNow = () => {
+    try {
+        const payload = {
+            correo_cliente: formServicio.correo_cliente || '',
+            hora_inicio: formServicio.hora_inicio || '',
+            _ts: Date.now(),
+        }
+        localStorage.setItem(SERVICE_STORAGE_KEY, JSON.stringify(payload))
+    } catch (e) {
+        // ignore
+    }
+}
+
+const saveServiceFieldsDebounced = () => {
+    clearTimeout(serviceSaveTimeout)
+    serviceSaveTimeout = setTimeout(saveServiceFieldsNow, 700)
+}
+
+const loadServiceFields = () => {
+    try {
+        const raw = localStorage.getItem(SERVICE_STORAGE_KEY)
+        if (!raw) return
+        const data = JSON.parse(raw)
+        if (data && typeof data === 'object') {
+            // Solo restaurar si los campos están vacíos para no sobreescribir datos del servidor
+            if (!formServicio.correo_cliente && data.correo_cliente) {
+                formServicio.correo_cliente = data.correo_cliente
+            }
+            if (!formServicio.hora_inicio && data.hora_inicio) {
+                formServicio.hora_inicio = data.hora_inicio
+            }
+        }
+    } catch (e) {
+        // ignore
+    }
+}
+
+const clearServiceFields = () => {
+    try { localStorage.removeItem(SERVICE_STORAGE_KEY) } catch (e) {}
+}
+
+// Guardar on change (debounced)
+watch(() => [formServicio.correo_cliente, formServicio.hora_inicio], () => {
+    saveServiceFieldsDebounced()
+}, { deep: true })
+
+// Guardar al cerrar la pestaña
+const onBeforeUnload = () => saveServiceFieldsNow()
+onMounted(() => {
+    loadServiceFields()
+    window.addEventListener('beforeunload', onBeforeUnload)
+})
+onUnmounted(() => {
+    window.removeEventListener('beforeunload', onBeforeUnload)
+})
+
 const formFinalizar = useForm({
     fecha_fin: props.visita?.fecha_fin ?? '',
     hora_fin: props.visita?.hora_fin ? String(props.visita.hora_fin).slice(0, 5) : '',
     firma: '',
     observaciones: '',
+})
+
+const formReenviarInforme = useForm({
+    correo: '',
 })
 
 const formInstalacion = useForm({
@@ -299,6 +406,47 @@ const mostrarAlertaFinalizacion = ref(false)
 const mostrarAlertaCotizacion = ref(false)
 const enviandoCotizacion = ref(false)
 
+const descargarInforme = () => {
+    window.location.href = route('visitastecnicas.visitas.informe-tecnico.descargar', props.visita.id)
+}
+
+const abrirModalReenviarInforme = () => {
+    formReenviarInforme.reset()
+    formReenviarInforme.clearErrors()
+    modalReenviarInforme.value = true
+}
+
+const reenviarInforme = async () => {
+    formReenviarInforme.clearErrors()
+    formReenviarInforme.processing = true
+
+    try {
+        await axios.post(route('visitastecnicas.visitas.informe-tecnico.reenviar', props.visita.id), {
+            correo: formReenviarInforme.correo,
+        }, {
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+            },
+        })
+
+        modalReenviarInforme.value = false
+        modalInformeReenviado.value = true
+        formReenviarInforme.reset()
+    } catch (error) {
+        if (error.response?.status === 422 && error.response.data?.errors) {
+            Object.entries(error.response.data.errors).forEach(([key, messages]) => {
+                formReenviarInforme.setError(key, Array.isArray(messages) ? messages[0] : messages)
+            })
+            return
+        }
+
+        alert(error.response?.data?.message || 'No fue posible reenviar el informe técnico.')
+    } finally {
+        formReenviarInforme.processing = false
+    }
+}
+
 // ── Helpers ────────────────────────────────────────────────
 const estadoColor = computed(() => {
     const colores = {
@@ -308,13 +456,13 @@ const estadoColor = computed(() => {
         'Cancelado':           'bg-red-100 text-red-700',
         'Pendiente Repuestos': 'bg-orange-100 text-orange-700',
     }
-    return colores[props.visita?.estado] ?? 'bg-gray-100 text-gray-600'
+    return colores[props.visita?.estado] ?? 'bg-stone-100 text-stone-600'
 })
 
 const estadoRepuestoColor = (estado) => {
-    if (!estado) return 'bg-gray-100 text-gray-600'
+    if (!estado) return 'bg-stone-100 text-stone-600'
     const colores = {
-        'Solicitud Cotización': 'bg-gray-100 text-gray-600',
+        'Solicitud Cotización': 'bg-stone-100 text-stone-600',
         'Repuesto Solicitado':  'bg-blue-100 text-blue-700',
         'Rechazo Cotización':   'bg-red-100 text-red-700',
         'Repuesto Facturado':   'bg-purple-100 text-purple-700',
@@ -322,7 +470,7 @@ const estadoRepuestoColor = (estado) => {
         'Repuesto Despachado':  'bg-orange-100 text-orange-700',
         'Repuesto Instalado':   'bg-green-100 text-green-700',
     }
-    return colores[estado] ?? 'bg-gray-100 text-gray-600'
+    return colores[estado] ?? 'bg-stone-100 text-stone-600'
 }
 
 const historialEstadoColor = (estado) => {
@@ -333,7 +481,7 @@ const historialEstadoColor = (estado) => {
         'Cancelado':           'bg-red-500',
         'Pendiente Repuestos': 'bg-orange-500',
     }
-    return colores[estado] ?? 'bg-gray-400'
+    return colores[estado] ?? 'bg-stone-400'
 }
 
 function requiereRepuestos(idsSolucion) {
@@ -360,11 +508,25 @@ const cumpleRepuestoObligatorio = computed(() => {
     return repuestosTemporal.value.length > 0 || equipoTieneRepuestosPrevios.value
 })
 
+const tieneFallaSeleccionada = computed(() => {
+    return formEquipo.id_tipo_falla.length > 0
+})
+const totalFallasSeleccionadas = computed(() => {
+    return formEquipo.id_tipo_falla.length
+})
+
+const textoResumenFallas = computed(() => {
+    if (totalFallasSeleccionadas.value === 0) return 'Seleccionar fallas...'
+
+    return String(totalFallasSeleccionadas.value) + ' seleccionada' + (totalFallasSeleccionadas.value === 1 ? '' : 's')
+})
+
 const puedeGuardarEquipo = computed(() => {
     return Boolean(
         formEquipo.id_cod_max &&
+        formEquipo.id_tipo_mant &&
         String(formEquipo.serial || '').trim() &&
-        String(formEquipo.descripcion_falla || '').trim() &&
+        tieneFallaSeleccionada.value &&
         formEquipo.id_solucion.length > 0 &&
         cumpleRepuestoObligatorio.value
     )
@@ -374,7 +536,8 @@ const mensajeGuardarEquipo = computed(() => {
     if (formEquipo.processing) return 'Guardando cambios...'
     if (!formEquipo.id_cod_max) return 'Selecciona un equipo para continuar.'
     if (!String(formEquipo.serial || '').trim()) return 'Falta el serial del equipo.'
-    if (!String(formEquipo.descripcion_falla || '').trim()) return 'Describe la falla antes de guardar.'
+    if (!formEquipo.id_tipo_mant) return 'Selecciona el tipo de mantenimiento.'
+    if (!tieneFallaSeleccionada.value) return 'Selecciona al menos una falla.'
     if (formEquipo.id_solucion.length === 0) return 'Selecciona al menos un tipo de solucion.'
     if (!cumpleRepuestoObligatorio.value) return 'Agrega al menos un repuesto para habilitar el guardado.'
     return ''
@@ -385,15 +548,21 @@ const pasoEquipoActual = ref(1)
 const pasoEquipo1Completo = computed(() => {
     return Boolean(
         formEquipo.id_cod_max &&
-        String(formEquipo.serial || '').trim()
+        String(formEquipo.serial || '').trim() &&
+        formEquipo.id_tipo_mant
     )
 })
 
 const pasoEquipo2Completo = computed(() => {
-    return Boolean(
-        String(formEquipo.descripcion_falla || '').trim() &&
-        formEquipo.id_solucion.length > 0
-    )
+    if (!tieneFallaSeleccionada.value || formEquipo.id_solucion.length === 0) {
+        return false
+    }
+
+    if (fallaOtrosSeleccionada.value && !descripcionOtros.value.trim()) {
+        return false
+    }
+
+    return true
 })
 
 const puedeGestionarRepuestosEnModalEquipo = computed(() => !equipoEditandoId.value)
@@ -513,6 +682,95 @@ const tiposSolucionOrdenados = computed(() => {
     })
 })
 
+const tiposSolucionFiltrados = computed(() => {
+    const busqueda = solucionesBusqueda.value.trim().toLocaleLowerCase()
+
+    if (!busqueda) {
+        return tiposSolucionOrdenados.value
+    }
+
+    return tiposSolucionOrdenados.value.filter((solucion) =>
+        String(solucion.TIPO_SOLUCION || '').toLocaleLowerCase().includes(busqueda)
+    )
+})
+
+const solucionesSeleccionadasDetalle = computed(() => {
+    return formEquipo.id_solucion
+        .map((solucionId) => tiposSolucionOrdenados.value.find((solucion) => Number(solucion.ID) === Number(solucionId)))
+        .filter(Boolean)
+})
+
+const textoResumenSoluciones = computed(() => {
+    if (formEquipo.id_solucion.length === 0) return 'Seleccionar soluciones...'
+
+    return String(formEquipo.id_solucion.length) + ' seleccionada' + (formEquipo.id_solucion.length === 1 ? '' : 's')
+})
+
+const quitarSolucion = (solucionId) => {
+    formEquipo.id_solucion = formEquipo.id_solucion.filter(id => Number(id) !== Number(solucionId))
+}
+
+const tiposMantOrdenados = computed(() => {
+    return [...props.tipos_mant].sort((a, b) => {
+        return String(a.TIPO_MANT).localeCompare(String(b.TIPO_MANT))
+    })
+})
+
+const tiposFallaOrdenadas = computed(() => {
+    return [...props.tipos_falla].sort((a, b) => {
+        return String(a.DESCRIPCION).localeCompare(String(b.DESCRIPCION))
+    })
+})
+
+const tiposFallaFiltradas = computed(() => {
+    const busqueda = fallasBusqueda.value.trim().toLocaleLowerCase()
+
+    if (!busqueda) {
+        return tiposFallaOrdenadas.value
+    }
+
+    return tiposFallaOrdenadas.value.filter((falla) =>
+        String(falla.DESCRIPCION || '').toLocaleLowerCase().includes(busqueda)
+    )
+})
+
+const fallasSeleccionadasDetalle = computed(() => {
+    return formEquipo.id_tipo_falla
+        .map((fallaId) => tiposFallaOrdenadas.value.find((falla) => Number(falla.ID) === Number(fallaId)))
+        .filter(Boolean)
+})
+
+const fallaSeleccionada = (fallaId) => {
+    return formEquipo.id_tipo_falla.map(id => Number(id)).includes(Number(fallaId))
+}
+
+const ID_FALLA_OTROS = 34
+const fallaOtrosSeleccionada = computed(() => {
+    return formEquipo.id_tipo_falla.map(id => Number(id)).includes(ID_FALLA_OTROS)
+})
+
+const toggleFalla = (fallaId) => {
+    if (fallaSeleccionada(fallaId)) {
+        formEquipo.id_tipo_falla = formEquipo.id_tipo_falla.filter(id => Number(id) !== Number(fallaId))
+
+    // Si se quita la falla "Otros" (ID 34), limpiar descripcion
+    if (Number(fallaId) === ID_FALLA_OTROS) {
+        descripcionOtros.value = ''
+    }
+        return
+    }
+
+    formEquipo.id_tipo_falla = [...formEquipo.id_tipo_falla, fallaId]
+}
+
+const quitarFalla = (fallaId) => {
+    formEquipo.id_tipo_falla = formEquipo.id_tipo_falla.filter(id => Number(id) !== Number(fallaId))
+
+    if (Number(fallaId) === ID_FALLA_OTROS) {
+        descripcionOtros.value = ''
+    }
+}
+
 const repuestoEstaInstalado = (repuesto) => Number(repuesto?.estado_id) === ESTADO_REPUESTO_INSTALADO
 const repuestoEstaRechazado = (repuesto) => Number(repuesto?.estado_id) === ESTADO_REPUESTO_RECHAZADO
 
@@ -587,48 +845,98 @@ const tiposSolucionComplementarios = computed(() => {
 })
 
 // ── Firma ──────────────────────────────────────────────────
-const iniciarFirma = (e) => {
-    dibujando = true
-    const ctx  = canvasFirma.value.getContext('2d')
+const configurarContextoFirma = (ctx) => {
+    ctx.lineWidth = 2.4
+    ctx.lineCap = "round"
+    ctx.lineJoin = "round"
+    ctx.strokeStyle = "#1e293b"
+}
+
+const prepararCanvasFirma = () => {
+    const canvas = canvasFirma.value
+    if (!canvas) return
+
+    const rect = canvas.getBoundingClientRect()
+    const ratio = window.devicePixelRatio || 1
+    const ancho = Math.max(Math.round(rect.width * ratio), 1)
+    const alto = Math.round(firmaCanvasAlto * ratio)
+
+    canvas.style.height = firmaCanvasAlto + "px"
+
+    if (canvas.width !== ancho || canvas.height !== alto) {
+        canvas.width = ancho
+        canvas.height = alto
+    }
+
+    const ctx = canvas.getContext("2d")
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0)
+    configurarContextoFirma(ctx)
+}
+
+const puntoFirma = (e) => {
     const rect = canvasFirma.value.getBoundingClientRect()
-    const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left
-    const y = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top
+    return {
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top,
+    }
+}
+
+const iniciarFirma = (e) => {
+    if (e.button !== undefined && e.button !== 0) return
+
+    e.preventDefault()
+    prepararCanvasFirma()
+    dibujando = true
+    e.currentTarget?.setPointerCapture?.(e.pointerId)
+
+    const ctx = canvasFirma.value.getContext("2d")
+    const punto = puntoFirma(e)
     ctx.beginPath()
-    ctx.moveTo(x, y)
+    ctx.moveTo(punto.x, punto.y)
 }
 
 const dibujarFirma = (e) => {
     if (!dibujando) return
+
     e.preventDefault()
-    const ctx  = canvasFirma.value.getContext('2d')
-    const rect = canvasFirma.value.getBoundingClientRect()
-    const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left
-    const y = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top
-    ctx.lineWidth   = 2
-    ctx.lineCap     = 'round'
-    ctx.strokeStyle = '#1e293b'
-    ctx.lineTo(x, y)
+    const ctx = canvasFirma.value.getContext("2d")
+    const punto = puntoFirma(e)
+    ctx.lineTo(punto.x, punto.y)
     ctx.stroke()
 }
 
-const terminarFirma = () => { dibujando = false }
+const terminarFirma = (e) => {
+    if (!dibujando) return
+
+    dibujando = false
+    e?.currentTarget?.releasePointerCapture?.(e.pointerId)
+}
 
 const limpiarFirma = () => {
-    const c = canvasFirma.value
-    if (!c) return
-    c.getContext('2d').clearRect(0, 0, c.width, c.height)
+    const canvas = canvasFirma.value
+    if (!canvas) return
+
+    const ctx = canvas.getContext("2d")
+    ctx.save()
+    ctx.setTransform(1, 0, 0, 1, 0, 0)
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+    ctx.restore()
+    configurarContextoFirma(ctx)
 }
 
 const firmaTieneContenido = () => {
     const canvas = canvasFirma.value
     if (!canvas) return false
 
-    const canvasVacio = document.createElement('canvas')
+    const canvasVacio = document.createElement("canvas")
     canvasVacio.width = canvas.width
     canvasVacio.height = canvas.height
 
     return canvas.toDataURL() !== canvasVacio.toDataURL()
 }
+
+onMounted(() => window.addEventListener('resize', prepararCanvasFirma))
+onUnmounted(() => window.removeEventListener('resize', prepararCanvasFirma))
 
 const camposFaltantesFinalizacion = computed(() => {
     if (props.visita?.es_capacitacion) {
@@ -671,7 +979,14 @@ const abrirModalEquipo = () => {
     equipoEditandoId.value = null
     formEquipo.id_cod_max = ''
     formEquipo.serial = ''
+    formEquipo.id_tipo_mant = ''
+    formEquipo.id_tipo_falla = []
     formEquipo.descripcion_falla = ''
+    descripcionOtros.value = ''
+    fallasBusqueda.value = ''
+    fallasDropdownAbierto.value = false
+    solucionesBusqueda.value = ''
+    solucionesDropdownAbierto.value = false
     formEquipo.id_solucion = []
     formEquipo.observaciones = ''
     formEquipo.repuestos = []
@@ -690,7 +1005,16 @@ const abrirModalEditarEquipo = (equipo) => {
     formEquipo.visita_id = props.visita.id
     formEquipo.id_cod_max = equipo.id_cod_max ?? ''
     formEquipo.serial = equipo.serial ?? ''
+    formEquipo.id_tipo_mant = equipo.id_tipo_mant ?? ''
+    formEquipo.id_tipo_falla = Array.isArray(equipo.fallas_ids)
+        ? equipo.fallas_ids.map(id => Number(id))
+        : []
     formEquipo.descripcion_falla = equipo.descripcion_falla ?? ''
+    descripcionOtros.value = ''
+    fallasBusqueda.value = ''
+    fallasDropdownAbierto.value = false
+    solucionesBusqueda.value = ''
+    solucionesDropdownAbierto.value = false
     formEquipo.id_solucion = Array.isArray(equipo.soluciones_ids)
         ? equipo.soluciones_ids.map(id => Number(id))
         : []
@@ -707,6 +1031,7 @@ const abrirModalEditarEquipo = (equipo) => {
     }
     herramientasBusqueda.value = descripcion ?? equipo.id_cod_max ?? ''
     herramientasResultados.value = []
+    herramientasBuscada.value = false
     repuestosTemporal.value = []
     equipoTieneRepuestosPrevios.value = Array.isArray(equipo.repuestos) && equipo.repuestos.length > 0
     fotosAntesEquipo.value = []
@@ -716,23 +1041,40 @@ const abrirModalEditarEquipo = (equipo) => {
 
 const buscarHerramientas = () => {
     clearTimeout(herramientaTimeout)
-    if (herramientasBusqueda.value.length < 2) {
+
+    const busqueda = String(herramientasBusqueda.value || '').trim()
+
+    if (herramientaSeleccionada.value && busqueda !== String(herramientaSeleccionada.value.descripcion || '').trim()) {
+        herramientaSeleccionada.value = null
+        formEquipo.id_cod_max = ''
+    }
+
+    if (busqueda.length < 2) {
         herramientasResultados.value = []
         herramientasCargando.value = false
+        herramientasBuscada.value = false
         return
     }
+
+    herramientasBuscada.value = true
     herramientaTimeout = setTimeout(async () => {
         herramientasCargando.value = true
         try {
             const response = await fetch(
-                `/visitas-tecnicas/senco360/herramientas/buscar?q=${encodeURIComponent(herramientasBusqueda.value)}`,
+                `/visitas-tecnicas/senco360/herramientas/buscar?q=${encodeURIComponent(busqueda)}`,
                 { credentials: 'include' }
             )
-            herramientasResultados.value = await response.json()
+            const resultados = await response.json()
+
+            if (busqueda === String(herramientasBusqueda.value || '').trim()) {
+                herramientasResultados.value = resultados
+            }
         } catch (error) {
             herramientasResultados.value = []
         } finally {
-            herramientasCargando.value = false
+            if (busqueda === String(herramientasBusqueda.value || '').trim()) {
+                herramientasCargando.value = false
+            }
         }
     }, 300)
 }
@@ -742,6 +1084,7 @@ const seleccionarHerramienta = (item) => {
     formEquipo.id_cod_max = item.codigo
     herramientasBusqueda.value = item.descripcion
     herramientasResultados.value = []
+    herramientasBuscada.value = false
 }
 
 const guardarEquipo = async () => {
@@ -755,6 +1098,7 @@ const guardarEquipo = async () => {
         cantidad: repuesto.cantidad,
         observacion: repuesto.observacion,
         resolver_en_campo: !!repuesto.resolver_en_campo,
+        es_urgente: !!repuesto.es_urgente,
     }))
 
     try {
@@ -766,10 +1110,10 @@ const guardarEquipo = async () => {
         Object.keys(formEquipo.data()).forEach(key => {
             const value = formEquipo[key]
             
-            // id_solucion se envía como array[] para Laravel
-            if (key === 'id_solucion' && Array.isArray(value)) {
+            // id_solucion e id_tipo_falla se envían como array[] para Laravel
+            if (['id_solucion', 'id_tipo_falla'].includes(key) && Array.isArray(value)) {
                 value.forEach(id => {
-                    formData.append('id_solucion[]', id)
+                    formData.append(`${key}[]`, id)
                 })
             } 
             // repuestos se envía como JSON
@@ -782,6 +1126,11 @@ const guardarEquipo = async () => {
             }
         })
         
+            // Agregar descripcion_otros si la falla "Otros" está seleccionada
+        if (fallaOtrosSeleccionada.value && descripcionOtros.value.trim()) {
+            formData.append('descripcion_otros', descripcionOtros.value.trim())
+        }
+
         // Agregar evidencia inicial si existe
         if (fotosAntesEquipo.value.length > 0) {
             fotosAntesEquipo.value.forEach((foto) => {
@@ -838,6 +1187,7 @@ const agregarRepuestoTemporal = () => {
         cantidad,
         observacion: formRepuesto.observacion,
         resolver_en_campo: !!formRepuesto.resolver_en_campo,
+        es_urgente: !!formRepuesto.es_urgente,
         descripcion: repuestoSeleccionado.value.descripcion,
         codigo: repuestoSeleccionado.value.codigo,
         inventario: repuestoSeleccionado.value.inventario,
@@ -861,6 +1211,7 @@ const resetearFormularioRepuesto = () => {
     formRepuesto.cantidad = 1
     formRepuesto.observacion = ''
     formRepuesto.resolver_en_campo = false
+    formRepuesto.es_urgente = false
 }
 
 const limpiarFormularioRepuestoTemporal = () => {
@@ -950,6 +1301,7 @@ const abrirModalEditarRepuesto = async (equipo, repuesto) => {
     formRepuesto.cantidad = Number(repuesto.cantidad) || 1
     formRepuesto.observacion = repuesto.observacion ?? ''
     formRepuesto.resolver_en_campo = Number(repuesto.estado_id) === ESTADO_REPUESTO_INSTALADO
+    formRepuesto.es_urgente = !!repuesto.es_urgente
     let detalleRepuesto = {
         descripcion: repuestosConDescripcion.value[repuesto.id_cod_max]?.descripcion ?? null,
         codigo_proveedor: repuestosConDescripcion.value[repuesto.id_cod_max]?.codigo_proveedor ?? null,
@@ -974,23 +1326,40 @@ const abrirModalEditarRepuesto = async (equipo, repuesto) => {
 
 const buscarRepuestos = () => {
     clearTimeout(repuestoTimeout)
-    if (repuestosBusqueda.value.length < 2) {
+
+    const busqueda = String(repuestosBusqueda.value || '').trim()
+
+    if (repuestoSeleccionado.value && busqueda !== String(repuestoSeleccionado.value.descripcion || '').trim()) {
+        repuestoSeleccionado.value = null
+        formRepuesto.id_cod_max = ''
+    }
+
+    if (busqueda.length < 2) {
         repuestosResultados.value = []
         repuestosCargando.value = false
+        repuestosBuscada.value = false
         return
     }
+
+    repuestosBuscada.value = true
     repuestoTimeout = setTimeout(async () => {
         repuestosCargando.value = true
         try {
             const response = await fetch(
-                `/visitas-tecnicas/senco360/repuestos/buscar?q=${encodeURIComponent(repuestosBusqueda.value)}`,
+                `/visitas-tecnicas/senco360/repuestos/buscar?q=${encodeURIComponent(busqueda)}`,
                 { credentials: 'include' }
             )
-            repuestosResultados.value = await response.json()
+            const resultados = await response.json()
+
+            if (busqueda === String(repuestosBusqueda.value || '').trim()) {
+                repuestosResultados.value = resultados
+            }
         } catch (error) {
             repuestosResultados.value = []
         } finally {
-            repuestosCargando.value = false
+            if (busqueda === String(repuestosBusqueda.value || '').trim()) {
+                repuestosCargando.value = false
+            }
         }
     }, 300)
 }
@@ -1000,6 +1369,7 @@ const seleccionarRepuesto = (item) => {
     formRepuesto.id_cod_max = item.codigo
     repuestosBusqueda.value = item.descripcion
     repuestosResultados.value = []
+    repuestosBuscada.value = false
 }
 
 const formatearInventario = (inventario) => {
@@ -1027,10 +1397,10 @@ const claseStock = (inventario) => {
     const valor = Number(inventario)
 
     if (inventario === null || inventario === undefined || inventario === '' || Number.isNaN(valor)) {
-        return 'bg-gray-100 text-gray-500'
+        return 'bg-stone-100 text-stone-500'
     }
 
-    if (valor <= 0) return 'bg-gray-100 text-gray-600'
+    if (valor <= 0) return 'bg-stone-100 text-stone-600'
     return 'bg-emerald-100 text-emerald-800'
 }
 
@@ -1041,6 +1411,7 @@ const guardarRepuesto = () => {
             observacion: data.observacion,
             id_estado: data.resolver_en_campo ? 19 : 13,
             resolver_en_campo: !!data.resolver_en_campo,
+            es_urgente: !!data.es_urgente,
         })).put(route('visitastecnicas.solicitudes-partes.update', repuestoEditandoId.value), {
             onSuccess: () => {
                 modalRepuesto.value = false
@@ -1226,7 +1597,10 @@ const abrirModalFinalizar = () => {
     modalFinalizar.value = true
     mostrarAlertaFinalizacion.value = false
     formFinalizar.firma = ''
-    nextTick(() => limpiarFirma())
+    nextTick(() => {
+        prepararCanvasFirma()
+        limpiarFirma()
+    })
 }
 
 const abrirModalCotizacion = () => {
@@ -1253,6 +1627,11 @@ const finalizar = () => {
         fecha_inicio: formServicio.fecha_inicio,
         hora_inicio: formServicio.hora_inicio,
     })).post(route('visitastecnicas.visitas.finalizar', props.visita.id), {
+        onSuccess: () => {
+            clearServiceFields()
+            modalFinalizar.value = false
+            modalFinalizacionExitosa.value = true
+        },
         onFinish: () => formFinalizar.transform((payload) => payload),
     })
 }
@@ -1278,6 +1657,8 @@ const solicitarCotizacion = async () => {
         })
 
         modalCotizacion.value = false
+        modalCotizacionEnviada.value = true
+        clearServiceFields()
         router.reload({ only: ['visita', 'equipos', 'historial'] })
     } catch (error) {
         if (error.response) {
@@ -1386,6 +1767,7 @@ const guardarBorrador = () => {
         },
     }).then(() => {
         modalGuardadoBorrador.value = true
+        clearServiceFields()
         router.reload({ only: ['visita'] })
     }).catch((error) => {
         if (error.response?.status === 422 && error.response.data?.errors) {
@@ -1404,7 +1786,7 @@ const guardarBorrador = () => {
 
         <template #header>
             <div class="flex items-center justify-between">
-                <h2 class="text-lg font-semibold text-gray-800">Visita #{{ visita.id }}</h2>
+                <h2 class="text-lg font-semibold text-stone-900">Visita #{{ visita.id }}</h2>
                 <span class="inline-flex rounded-full px-3 py-1 text-xs font-semibold" :class="estadoColor">
                     {{ visita.estado }}
                 </span>
@@ -1424,75 +1806,79 @@ const guardarBorrador = () => {
                 </div>
 
                 <!-- ── Sección 1: Cliente ── -->
-                <div class="rounded-xl bg-white shadow-sm border border-gray-100 overflow-hidden">
-                    <div class="bg-gray-50 border-b border-gray-100 px-4 py-2.5">
-                        <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-400">Cliente</h3>
+                <div class="rounded-xl bg-white shadow-sm border border-stone-200 overflow-hidden">
+                    <div class="bg-stone-50 border-b border-stone-200 px-4 py-2.5">
+                        <h3 class="text-xs font-semibold uppercase tracking-wide text-stone-500">Cliente</h3>
                     </div>
                     <div class="px-4 py-3 grid grid-cols-2 gap-3">
                         <div class="col-span-2">
-                            <p class="text-xs text-gray-400">Empresa</p>
-                            <p class="text-sm font-semibold text-gray-900">{{ visita.cliente?.nombre ?? '—' }}</p>
+                            <p class="text-xs text-stone-500">Empresa</p>
+                            <p class="text-sm font-semibold text-stone-900">{{ visita.cliente?.nombre ?? '—' }}</p>
                         </div>
                         <div>
-                            <p class="text-xs text-gray-400">NIT</p>
-                            <p class="text-sm text-gray-700">{{ visita.cliente?.nit ?? '—' }}</p>
+                            <p class="text-xs text-stone-500">NIT</p>
+                            <p class="text-sm text-stone-700">{{ visita.cliente?.nit ?? '—' }}</p>
                         </div>
                         <div>
-                            <p class="text-xs text-gray-400">N° Ruta</p>
-                            <p class="text-sm text-gray-700">{{ visita.numero_ruta ?? '—' }}</p>
+                            <p class="text-xs text-stone-500">N° Ruta</p>
+                            <p class="text-sm text-stone-700">{{ visita.numero_ruta ?? '—' }}</p>
                         </div>
                         <div class="col-span-2">
-                            <p class="text-xs text-gray-400">Dirección</p>
-                            <p class="text-sm text-gray-700">{{ visita.direccion ?? '—' }}</p>
+                            <p class="text-xs text-stone-500">Dirección</p>
+                            <p class="text-sm text-stone-700">{{ visita.direccion ?? '—' }}</p>
                         </div>
                         <div>
-                            <p class="text-xs text-gray-400">Fecha programada</p>
-                            <p class="text-sm text-gray-700">{{ visita.fecha_visita ?? '—' }}</p>
+                            <p class="text-xs text-stone-500">Fecha programada</p>
+                            <p class="text-sm text-stone-700">{{ visita.fecha_visita ?? '—' }}</p>
                         </div>
                         <div>
-                            <p class="text-xs text-gray-400">Nombre Contacto</p>
-                            <p class="text-sm text-gray-700">{{ visita.nom_contacto ?? '—' }}</p>
+                            <p class="text-xs text-stone-500">Nombre Contacto</p>
+                            <p class="text-sm text-stone-700">{{ visita.nom_contacto ?? '—' }}</p>
                         </div>
                         <div>
-                            <p class="text-xs text-gray-400">Teléfono Contacto</p>
-                            <p class="text-sm text-gray-700">{{ visita.tel_contacto ?? '—' }}</p>
+                            <p class="text-xs text-stone-500">Teléfono Contacto</p>
+                            <p class="text-sm text-stone-700">{{ visita.tel_contacto ?? '—' }}</p>
+                        </div>
+                        <div v-if="visita.observaciones_ruta" class="col-span-2">
+                            <p class="text-xs text-stone-500">Observaciones</p>
+                            <p class="text-sm text-stone-700">{{ visita.observaciones_ruta }}</p>
                         </div>
                     </div>
                 </div>
 
                 <!-- ── Sección 2: Servicio ── -->
-                <div class="rounded-xl bg-white shadow-sm border border-gray-100 overflow-hidden">
-                    <div class="bg-gray-50 border-b border-gray-100 px-4 py-2.5">
-                        <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-400">Servicio</h3>
+                <div class="rounded-xl bg-white shadow-sm border border-stone-200 overflow-hidden">
+                    <div class="bg-stone-50 border-b border-stone-200 px-4 py-2.5">
+                        <h3 class="text-xs font-semibold uppercase tracking-wide text-stone-500">Servicio</h3>
                     </div>
                     <div class="px-4 py-3 grid grid-cols-2 gap-3">
                         <div>
-                            <p class="text-xs text-gray-400">Tipo</p>
-                            <p class="text-sm font-medium text-gray-900">{{ visita.tipo_servicio ?? '—' }}</p>
+                            <p class="text-xs text-stone-500">Tipo</p>
+                            <p class="text-sm font-medium text-stone-900">{{ visita.tipo_servicio ?? '—' }}</p>
                         </div>
                         <div v-if="visita.es_capacitacion || completado">
-                            <p class="text-xs text-gray-400">Correo para Informe técnico de visita</p>
-                            <p class="text-sm text-gray-700">{{ visita.correo_cliente ?? '—' }}</p>
+                            <p class="text-xs text-stone-500">Correo para Informe técnico de visita</p>
+                            <p class="text-sm text-stone-700">{{ visita.correo_cliente ?? '—' }}</p>
                         </div>
                         <div v-else>
-                            <label class="block text-xs text-gray-400 mb-1">Correo para informe técnico de la visita</label>
+                            <label class="block text-xs text-stone-500 mb-1">Correo para informe técnico de la visita</label>
                             <input v-model="formServicio.correo_cliente" type="email"
                                 placeholder="cliente@empresa.com"
-                                class="block w-full rounded-lg border-gray-300 text-sm py-2.5 focus:border-blue-500 focus:ring-blue-500" />
+                                class="block w-full rounded-lg border-stone-300 text-sm py-2.5 focus:border-[#C8102E] focus:ring-red-100" />
                             <p v-if="formServicio.errors.correo_cliente" class="mt-1 text-xs text-red-600">
                                 {{ formServicio.errors.correo_cliente }}
                             </p>
                         </div>
                         <div v-if="visita.es_capacitacion || completado">
-                            <p class="text-xs text-gray-400">Fecha inicio</p>
-                            <p class="text-sm text-gray-700">{{ visita.fecha_inicio ?? '—' }}</p>
+                            <p class="text-xs text-stone-500">Fecha inicio</p>
+                            <p class="text-sm text-stone-700">{{ visita.fecha_inicio ?? '—' }}</p>
                         </div>
                         <div v-else>
-                            <label class="block text-xs text-gray-400 mb-1">Fecha inicio <span class="text-red-500">*</span></label>
+                            <label class="block text-xs text-stone-500 mb-1">Fecha inicio <span class="text-red-500">*</span></label>
                             <input v-model="formServicio.fecha_inicio" type="date" required
                                 :disabled="esPendienteRepuestos"
-                                class="block w-full rounded-lg border-gray-300 text-sm py-2.5 focus:border-blue-500 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed disabled:text-gray-500" />
-                            <p v-if="esPendienteRepuestos" class="mt-1 text-xs text-gray-400">
+                                class="block w-full rounded-lg border-stone-300 text-sm py-2.5 focus:border-[#C8102E] focus:ring-red-100 disabled:bg-stone-100 disabled:cursor-not-allowed disabled:text-stone-500" />
+                            <p v-if="esPendienteRepuestos" class="mt-1 text-xs text-stone-500">
                                 No se puede modificar después de enviar a cotización
                             </p>
                             <p v-if="formServicio.errors.fecha_inicio" class="mt-1 text-xs text-red-600">
@@ -1500,15 +1886,15 @@ const guardarBorrador = () => {
                             </p>
                         </div>
                         <div v-if="visita.es_capacitacion || completado">
-                            <p class="text-xs text-gray-400">Hora inicio</p>
-                            <p class="text-sm text-gray-700">{{ visita.hora_inicio ?? '—' }}</p>
+                            <p class="text-xs text-stone-500">Hora inicio</p>
+                            <p class="text-sm text-stone-700">{{ visita.hora_inicio ?? '—' }}</p>
                         </div>
                         <div v-else>
-                            <label class="block text-xs text-gray-400 mb-1">Hora inicio <span class="text-red-500">*</span></label>
+                            <label class="block text-xs text-stone-500 mb-1">Hora inicio <span class="text-red-500">*</span></label>
                             <input v-model="formServicio.hora_inicio" type="time" required
                                 :disabled="esPendienteRepuestos"
-                                class="block w-full rounded-lg border-gray-300 text-sm py-2.5 focus:border-blue-500 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed disabled:text-gray-500" />
-                            <p v-if="esPendienteRepuestos" class="mt-1 text-xs text-gray-400">
+                                class="block w-full rounded-lg border-stone-300 text-sm py-2.5 focus:border-[#C8102E] focus:ring-red-100 disabled:bg-stone-100 disabled:cursor-not-allowed disabled:text-stone-500" />
+                            <p v-if="esPendienteRepuestos" class="mt-1 text-xs text-stone-500">
                                 No se puede modificar después de enviar a cotización
                             </p>
                             <p v-if="formServicio.errors.hora_inicio" class="mt-1 text-xs text-red-600">
@@ -1516,62 +1902,62 @@ const guardarBorrador = () => {
                             </p>
                         </div>
                         <div v-if="visita.es_capacitacion || completado">
-                            <p class="text-xs text-gray-400">Fecha fin</p>
-                            <p class="text-sm text-gray-700">{{ visita.fecha_fin ?? '—' }}</p>
+                            <p class="text-xs text-stone-500">Fecha fin</p>
+                            <p class="text-sm text-stone-700">{{ visita.fecha_fin ?? '—' }}</p>
                         </div>
                         <div v-if="visita.es_capacitacion || completado">
-                            <p class="text-xs text-gray-400">Hora fin</p>
-                            <p class="text-sm text-gray-700">{{ visita.hora_fin ?? '—' }}</p>
+                            <p class="text-xs text-stone-500">Hora fin</p>
+                            <p class="text-sm text-stone-700">{{ visita.hora_fin ?? '—' }}</p>
                         </div>
                         <div v-if="visita.observaciones" class="col-span-2">
-                            <p class="text-xs text-gray-400">Observaciones</p>
-                            <p class="text-sm text-gray-700">{{ visita.observaciones }}</p>
+                            <p class="text-xs text-stone-500">Observaciones</p>
+                            <p class="text-sm text-stone-700">{{ visita.observaciones }}</p>
                         </div>
                     </div>
                 </div>
 
                 <!-- ── Sección 3: Capacitación ── -->
 <div v-if="visita?.es_capacitacion"
-    class="rounded-xl bg-white shadow-sm border border-gray-100 overflow-hidden">
-    <div class="bg-gray-50 border-b border-gray-100 px-4 py-2.5">
-        <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-400">Capacitación</h3>
+    class="rounded-xl bg-white shadow-sm border border-stone-200 overflow-hidden">
+    <div class="bg-stone-50 border-b border-stone-200 px-4 py-2.5">
+        <h3 class="text-xs font-semibold uppercase tracking-wide text-stone-500">Capacitación</h3>
     </div>
     <div class="px-4 py-3 space-y-3">
 
         <!-- Formulario (crear o editar) -->
         <div>
-            <label class="block text-xs font-medium text-gray-700 mb-1">
+            <label class="block text-xs font-medium text-stone-700 mb-1">
                 Título <span class="text-red-500">*</span>
             </label>
-            <p v-if="completado" class="text-sm text-gray-900 font-medium">
+            <p v-if="completado" class="text-sm text-stone-900 font-medium">
                 {{ equipos[0]?.titulo ?? '—' }}
             </p>
             <input v-else v-model="formCapacitacion.titulo" type="text"
                 placeholder="Título de la capacitación"
-                class="block w-full rounded-lg border-gray-300 text-sm py-2.5 focus:border-blue-500 focus:ring-blue-500" />
+                class="block w-full rounded-lg border-stone-300 text-sm py-2.5 focus:border-[#C8102E] focus:ring-red-100" />
         </div>
 
         <div>
-            <label class="block text-xs font-medium text-gray-700 mb-1">Temas tratados</label>
-            <p v-if="completado" class="text-sm text-gray-700 whitespace-pre-wrap">
+            <label class="block text-xs font-medium text-stone-700 mb-1">Temas tratados</label>
+            <p v-if="completado" class="text-sm text-stone-700 whitespace-pre-wrap">
                 {{ equipos[0]?.descripcion_falla ?? '—' }}
             </p>
             <textarea v-else v-model="formCapacitacion.temas" rows="5"
                 placeholder="Describe los temas tratados en la capacitación..."
-                class="block w-full rounded-lg border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500" />
+                class="block w-full rounded-lg border-stone-300 text-sm focus:border-[#C8102E] focus:ring-red-100"></textarea>
         </div>
 
         <!-- Fotos -->
         <div>
-            <label class="block text-xs font-medium text-gray-700 mb-2">Evidencia Capacitación</label>
+            <label class="block text-xs font-medium text-stone-700 mb-2">Evidencia Capacitación</label>
             <!-- Fotos existentes -->
             <div v-if="equipos[0]?.fotos_despues?.length > 0"
                 class="grid grid-cols-3 gap-2 mb-3">
                 <div v-for="foto in equipos[0].fotos_despues" :key="foto.id"
                     class="relative group">
                     <img :src="foto.url"
-                        class="w-full h-24 object-cover rounded-lg border border-gray-200 cursor-pointer"
-                        @click="fotoAmpliada = foto.url" />
+                        class="w-full h-24 object-cover rounded-lg border border-stone-200 cursor-pointer"
+                        @click="abrirFotoAmpliada(foto.url)" />
                     <button v-if="!completado"
                         @click="eliminarFoto(foto.id)"
                         :class="buttonClass('danger', 'xs', 'absolute top-1 right-1 hidden h-6 w-6 px-0 py-0 group-hover:flex shadow')">
@@ -1581,11 +1967,11 @@ const guardarBorrador = () => {
             </div>
             <!-- Subir fotos -->
             <label v-if="!completado"
-                class="flex items-center justify-center gap-2 w-full rounded-lg border-2 border-dashed border-gray-200 bg-gray-50 py-4 cursor-pointer hover:bg-gray-100 transition">
-                <svg class="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                class="flex items-center justify-center gap-2 w-full rounded-lg border-2 border-dashed border-stone-200 bg-stone-50 py-4 cursor-pointer hover:bg-stone-100 transition">
+                <svg class="h-5 w-5 text-stone-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
                 </svg>
-                <span class="text-sm text-gray-400">Agregar fotos</span>
+                <span class="text-sm text-stone-500">Agregar fotos</span>
                 <input type="file" accept="image/*" multiple class="hidden"
                     @change="subirFotos($event, equipos[0]?.id, 'DESPUES')" />
             </label>
@@ -1605,9 +1991,9 @@ const guardarBorrador = () => {
 </div>
 
                 <!-- ── Sección 3: Equipos (Mantenimiento) ── -->
-                <div v-else-if="visita && !visita.es_capacitacion" class="rounded-xl bg-white shadow-sm border border-gray-100 overflow-hidden">
-                    <div class="flex items-center justify-between bg-gray-50 border-b border-gray-100 px-4 py-2.5">
-                        <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-400">Equipos atendidos</h3>
+                <div v-else-if="visita && !visita.es_capacitacion" class="rounded-xl bg-white shadow-sm border border-stone-200 overflow-hidden">
+                    <div class="flex items-center justify-between bg-stone-50 border-b border-stone-200 px-4 py-2.5">
+                        <h3 class="text-xs font-semibold uppercase tracking-wide text-stone-500">Equipos atendidos</h3>
                         <button v-if="puedeEditar"
                             @click="abrirModalEquipo"
                             :class="buttonClass('primary', 'sm')">
@@ -1615,31 +2001,46 @@ const guardarBorrador = () => {
                         </button>
                     </div>
 
-                    <div v-if="equipos.length === 0" class="px-4 py-8 text-center text-sm text-gray-400">
+                    <div v-if="equipos.length === 0" class="px-4 py-8 text-center text-sm text-stone-500">
                         No hay equipos registrados.
                     </div>
 
-                    <div v-else class="space-y-2 bg-gray-50/60 px-3 py-3">
-                        <div v-for="(equipo, indice) in equipos" :key="equipo.id" class="rounded-md border border-gray-200 bg-white overflow-hidden shadow-sm">
+                    <div v-else class="space-y-2 bg-stone-50/60 px-3 py-3">
+                        <div v-for="(equipo, indice) in equipos" :key="equipo.id" class="rounded-md border border-stone-200 bg-white overflow-hidden shadow-sm">
                             <!-- ENCABEZADO DESPLEGABLE DEL EQUIPO -->
                             <button @click="equipoExpandido = equipoExpandido === equipo.id ? null : equipo.id"
-                                class="w-full px-3 py-2.5 flex items-start justify-between gap-3 hover:bg-gray-50 transition text-left border-b border-gray-200 bg-gray-50">
-                                <div class="flex items-start gap-3 flex-1 min-w-0">
-                                    <span class="w-4 shrink-0 mt-0.5 text-center text-lg leading-none font-bold text-gray-600">
-                                        {{ equipoExpandido === equipo.id ? '-' : '+' }}
+                                class="group w-full px-3 py-2.5 flex items-start justify-between gap-3 hover:bg-stone-50 transition text-left border-b border-stone-200 bg-stone-50">
+                                <div class="flex items-center gap-3 flex-1 min-w-0">
+                                    <span
+                                        class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border shadow-sm transition group-hover:scale-105 group-hover:shadow-md group-focus-visible:ring-2 group-focus-visible:ring-red-200"
+                                        :class="equipoExpandido === equipo.id
+                                            ? 'border-red-200 bg-red-50 text-[#C8102E]'
+                                            : 'border-stone-300 bg-white text-stone-700'"
+                                        aria-hidden="true"
+                                    >
+                                        <svg v-if="equipoExpandido === equipo.id" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                                            <path stroke-linecap="round" d="M5 12h14" />
+                                        </svg>
+                                        <svg v-else class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                                            <path stroke-linecap="round" d="M12 5v14M5 12h14" />
+                                        </svg>
                                     </span>
                                     <div class="min-w-0 flex-1 space-y-1">
-                                        <p class="text-[13px] font-semibold text-gray-900 break-words">
+                                        <p class="text-[13px] font-semibold text-stone-900 break-words">
                                             Equipo {{ indice + 1 }}
                                             <span v-if="equiposConDescripcion[equipo.id_cod_max]?.descripcion"> - {{ equiposConDescripcion[equipo.id_cod_max].descripcion }}</span>
                                             <span v-if="equipo.id_cod_max"> - {{ equipo.id_cod_max }}</span>
                                         </p>
-                                        <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-gray-600">
-                                            <span v-if="equipo.serial"><span class="font-medium text-gray-700">Serial:</span> {{ equipo.serial }}</span>
-                                            <span v-if="equiposConDescripcion[equipo.id_cod_max]?.codigo_proveedor"><span class="font-medium text-gray-700">Código Comodidad:</span> {{ equiposConDescripcion[equipo.id_cod_max].codigo_proveedor }}</span>
+                                        <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-stone-600">
+                                            <span v-if="equipo.serial"><span class="font-medium text-stone-700">Serial:</span> {{ equipo.serial }}</span>
+                                            <span v-if="equiposConDescripcion[equipo.id_cod_max]?.codigo_proveedor"><span class="font-medium text-stone-700">Código Comodidad:</span> {{ equiposConDescripcion[equipo.id_cod_max].codigo_proveedor }}</span>
+                                            <span v-if="equipo.tipo_mant || equipo.id_tipo_mant"><span class="font-medium text-stone-700">Tipo mantenimiento:</span> {{ equipo.tipo_mant || equipo.id_tipo_mant }}</span>
                                         </div>
-                                        <p v-if="equipo.descripcion_falla" class="text-[11px] text-gray-600 line-clamp-2">
-                                            <span class="font-medium text-gray-700">Falla:</span> {{ equipo.descripcion_falla }}
+                                        <p v-if="(Array.isArray(equipo.fallas) && equipo.fallas.length) || equipo.descripcion_falla" class="text-[11px] text-stone-600 line-clamp-2">
+                                            <span class="font-medium text-stone-700">Fallas:</span> {{ Array.isArray(equipo.fallas) && equipo.fallas.length ? equipo.fallas.map(f => f.descripcion_otros && Number(f.id) === 34 ? f.descripcion_otros : f.descripcion).join(', ') : equipo.descripcion_falla }}
+                                        </p>
+                                        <p v-if="equipo.tipo_mant" class="text-[11px] text-stone-600">
+                                            <span class="font-medium text-stone-700">Tipo mantenimiento:</span> {{ equipo.tipo_mant }}
                                         </p>
                                     </div>
                                 </div>
@@ -1681,41 +2082,20 @@ const guardarBorrador = () => {
                                 @leave="expandLeave"
                                 @after-leave="afterExpandLeave">
                                 <div v-if="equipoExpandido === equipo.id" class="overflow-hidden">
-                                <div class="bg-gray-50/70 px-2.5 py-2 space-y-2">
-                                <!-- SECCIÓN 1: Información de servicio -->
-                                <div class="rounded-md border border-gray-200 bg-white px-3 py-2">
-                                    <div class="space-y-2">
-                                        <div v-if="equipo.soluciones?.length || (puedeGestionarEvidenciaFinal && puedeAgregarSolucionComplementariaEquipo(equipo))">
-                                            <div class="mb-1 flex items-center justify-between gap-2">
-                                                <p class="text-[11px] text-gray-500 font-semibold uppercase tracking-wide">Soluciones aplicadas</p>
-                                                <button
-                                                    v-if="puedeGestionarEvidenciaFinal && puedeAgregarSolucionComplementariaEquipo(equipo)"
-                                                    @click.stop="abrirModalSolucionesComplementarias(equipo)"
-                                                    :class="buttonClass('emerald', 'xs', 'w-auto self-start px-2 py-1 text-[10px] leading-tight sm:px-2.5 sm:py-1.5 sm:text-[11px]')"
-                                                >
-                                                    <span class="sm:hidden"><b>+</b> Solución complementaria</span>
-                                                    <span class="hidden sm:inline">Agregar solución complementaria</span>
-                                                </button>
-                                            </div>
-                                            <div class="flex flex-wrap gap-1.5">
-                                                <span v-for="sol in equipo.soluciones" :key="sol" class="inline-flex items-center px-2 py-1 rounded text-[11px] font-medium border border-gray-300 bg-white text-gray-900">
-                                                    {{ sol }}
-                                                </span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
+                                <div class="bg-stone-50/70 px-2.5 py-2 space-y-2">
                                 <!-- SECCIÓN 2: Repuestos requeridos -->
-                                <div v-if="requiereRepuestos(equipo.soluciones_ids)" class="ml-3 rounded-md border border-gray-200 bg-white overflow-hidden">
+                                <div v-if="requiereRepuestos(equipo.soluciones_ids)" class="ml-3 rounded-md border border-stone-200 bg-white overflow-hidden">
                                     <button @click="toggleSeccion(equipo.id, 'repuestos')"
-                                        class="w-full px-3 py-2 flex items-center justify-between hover:bg-gray-50 transition text-left border-l-2 border-l-amber-300 bg-amber-50/40">
+                                        class="w-full px-3 py-2 flex items-center justify-between hover:bg-stone-50 transition text-left border-l-2 border-l-amber-300 bg-amber-50/40">
                                         <div class="flex items-center gap-3">
                                             <span class="w-3.5 text-center text-lg leading-none font-bold text-amber-700">
                                                 {{ esSeccionExpandida(equipo.id, 'repuestos') ? '-' : '+' }}
                                             </span>
                                             <p class="text-[11px] font-semibold text-amber-800 uppercase tracking-wide">Repuestos requeridos</p>
                                         </div>
+                                        <span v-if="equipo.repuestos?.some(r => r.es_urgente)" class="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700">
+                                            URGENTE
+                                        </span>
                                         <span v-if="equipo.repuestos?.length" class="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">{{ equipo.repuestos.length }}</span>
                                     </button>
                                     <Transition
@@ -1727,21 +2107,27 @@ const guardarBorrador = () => {
                                         @leave="expandLeave"
                                         @after-leave="afterExpandLeave">
                                         <div v-if="esSeccionExpandida(equipo.id, 'repuestos')">
-                                            <div class="px-3 py-2 bg-white space-y-1.5 border-t border-gray-100">
-                                                <div v-if="!equipo.repuestos?.length" class="text-xs text-gray-500 py-1.5 text-center">
+                                            <div class="px-3 py-2 bg-white space-y-1.5 border-t border-stone-200">
+                                                <div v-if="!equipo.repuestos?.length" class="text-xs text-stone-500 py-1.5 text-center">
                                                     No hay repuestos agregados
                                                 </div>
                                                 <div v-else class="space-y-1.5">
                                                     <div v-for="repuesto in equipo.repuestos" :key="repuesto.id"
-                                                        class="flex flex-col sm:flex-row sm:items-start justify-between rounded border border-gray-200 bg-gray-50/60 px-3 py-2 text-xs hover:bg-gray-50 transition gap-2">
+                                                        class="flex flex-col sm:flex-row sm:items-start justify-between rounded border bg-stone-50/60 px-3 py-2 text-xs hover:bg-stone-50 transition gap-2" :class="repuesto.es_urgente ? 'border-red-300 bg-red-50/60' : 'border-stone-200'">
                                                         <div class="flex-1 min-w-0">
                                                             <div class="flex flex-wrap items-center gap-x-2 gap-y-1 mb-1">
-                                                                <p class="font-semibold text-gray-900">Código Max: {{ repuesto.id_cod_max }}</p>
-                                                                <span v-if="repuestosConDescripcion[repuesto.id_cod_max]?.codigo_proveedor" class="text-gray-500 hidden sm:inline">|</span>
-                                                                <span v-if="repuestosConDescripcion[repuesto.id_cod_max]?.codigo_proveedor" class="text-gray-700 font-medium">Código Comodidad: {{ repuestosConDescripcion[repuesto.id_cod_max].codigo_proveedor }}</span>
+                                                                <p class="font-semibold text-stone-900">Código Max: {{ repuesto.id_cod_max }}</p>
+                                                                <span v-if="repuesto.es_urgente" class="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700">
+                                                                    URGENTE
+                                                                </span>
+                                                                <span v-if="repuestosConDescripcion[repuesto.id_cod_max]?.codigo_proveedor" class="text-stone-500 hidden sm:inline">|</span>
+                                                                <span v-if="repuestosConDescripcion[repuesto.id_cod_max]?.codigo_proveedor" class="text-stone-700 font-medium">Código Comodidad: {{ repuestosConDescripcion[repuesto.id_cod_max].codigo_proveedor }}</span>
                                                             </div>
-                                                            <p v-if="repuestosConDescripcion[repuesto.id_cod_max]?.descripcion" class="text-gray-600 mb-1">{{ repuestosConDescripcion[repuesto.id_cod_max].descripcion }}</p>
-                                                            <span class="text-gray-700">Cantidad: <span class="font-semibold">{{ repuesto.cantidad }}</span></span>
+                                                            <p v-if="repuestosConDescripcion[repuesto.id_cod_max]?.descripcion" class="text-stone-600 mb-1">{{ repuestosConDescripcion[repuesto.id_cod_max].descripcion }}</p>
+                                                            <p class="text-stone-700">Cantidad: <span class="font-semibold">{{ repuesto.cantidad }}</span></p>
+                                                            <p v-if="repuesto.observacion" class="mt-1 text-stone-600">
+                                                                <span class="font-medium text-stone-700">Observación:</span> {{ repuesto.observacion }}
+                                                            </p>
                                                         </div>
                                                         <div class="flex items-center gap-2 flex-shrink-0 self-end sm:self-start sm:ml-2">
                                                             <span class="text-xs font-semibold px-2 py-1 rounded border"
@@ -1777,9 +2163,9 @@ const guardarBorrador = () => {
                                 </div>
 
                                 <!-- SECCIÓN: Evidencia Inicial -->
-                                <div class="ml-3 rounded-md border border-gray-200 bg-white overflow-hidden">
+                                <div class="ml-3 rounded-md border border-stone-200 bg-white overflow-hidden">
                                     <button @click="toggleSeccion(equipo.id, 'fotos-antes')"
-                                        class="w-full px-3 py-2 flex items-center justify-between hover:bg-gray-50 transition text-left border-l-2 border-l-sky-300 bg-sky-50/40">
+                                        class="w-full px-3 py-2 flex items-center justify-between hover:bg-stone-50 transition text-left border-l-2 border-l-sky-300 bg-sky-50/40">
                                         <div class="flex items-center gap-3">
                                             <span class="w-3.5 text-center text-lg leading-none font-bold text-sky-700">
                                                 {{ esSeccionExpandida(equipo.id, 'fotos-antes') ? '-' : '+' }}
@@ -1797,18 +2183,18 @@ const guardarBorrador = () => {
                                         @leave="expandLeave"
                                         @after-leave="afterExpandLeave">
                                         <div v-if="esSeccionExpandida(equipo.id, 'fotos-antes')">
-                                            <div class="px-3 py-2 bg-white space-y-1.5 border-t border-gray-100">
+                                            <div class="px-3 py-2 bg-white space-y-1.5 border-t border-stone-200">
                                                 <div v-if="equipo.fotos_antes?.length > 0" class="space-y-1.5">
                                                     <div v-for="(foto, idx) in equipo.fotos_antes" :key="'antes-' + idx"
-                                                        class="flex items-center justify-between text-xs bg-gray-50/60 px-3 py-2 rounded border border-gray-200 hover:bg-gray-50 transition">
+                                                        class="flex items-center justify-between text-xs bg-stone-50/60 px-3 py-2 rounded border border-stone-200 hover:bg-stone-50 transition">
                                                         <div class="flex items-center gap-2">
-                                                            <svg class="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            <svg class="w-4 h-4 text-stone-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                                                             </svg>
-                                                            <span class="text-gray-700 font-medium">Foto {{ idx + 1 }}</span>
+                                                            <span class="text-stone-700 font-medium">Foto {{ idx + 1 }}</span>
                                                         </div>
                                                         <div class="flex items-center gap-2">
-                                                            <button @click="fotoAmpliada = foto.url"
+                                                            <button @click="abrirFotoAmpliada(foto.url)"
                                                                 :class="buttonClass('primary', 'xs')">
                                                                 Ver
                                                             </button>
@@ -1820,15 +2206,15 @@ const guardarBorrador = () => {
                                                         </div>
                                                     </div>
                                                 </div>
-                                                <div v-else class="text-xs text-gray-500 py-1.5 text-center">
+                                                <div v-else class="text-xs text-stone-500 py-1.5 text-center">
                                                     Sin evidencia inicial registrada
                                                 </div>
                                                 <label v-if="!completado && puedeEditar"
-                                                    class="flex items-center justify-center gap-2 w-full rounded border border-dashed border-gray-300 bg-gray-50 py-2 px-3 cursor-pointer hover:bg-gray-100 transition mt-1">
-                                                    <svg class="h-4 w-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    class="flex items-center justify-center gap-2 w-full rounded border border-dashed border-stone-300 bg-stone-50 py-2 px-3 cursor-pointer hover:bg-stone-100 transition mt-1">
+                                                    <svg class="h-4 w-4 text-stone-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
                                                     </svg>
-                                                    <span class="text-xs font-medium text-gray-700">Agregar evidencia</span>
+                                                    <span class="text-xs font-medium text-stone-700">Agregar evidencia</span>
                                                     <input type="file" accept="image/*" multiple class="hidden"
                                                         @change="subirFotos($event, equipo.id, 'ANTES')" />
                                                 </label>
@@ -1838,9 +2224,9 @@ const guardarBorrador = () => {
                                 </div>
 
                                 <!-- SECCIÓN: Evidencia Final -->
-                                <div class="ml-3 rounded-md border border-gray-200 bg-white overflow-hidden">
+                                <div class="ml-3 rounded-md border border-stone-200 bg-white overflow-hidden">
                                     <button @click="toggleSeccion(equipo.id, 'fotos-despues')"
-                                        class="w-full px-3 py-2 flex items-center justify-between hover:bg-gray-50 transition text-left border-l-2 border-l-emerald-300 bg-emerald-50/40">
+                                        class="w-full px-3 py-2 flex items-center justify-between hover:bg-stone-50 transition text-left border-l-2 border-l-emerald-300 bg-emerald-50/40">
                                         <div class="flex items-center gap-3">
                                             <span class="w-3.5 text-center text-lg leading-none font-bold text-emerald-700">
                                                 {{ esSeccionExpandida(equipo.id, 'fotos-despues') ? '-' : '+' }}
@@ -1858,18 +2244,18 @@ const guardarBorrador = () => {
                                         @leave="expandLeave"
                                         @after-leave="afterExpandLeave">
                                         <div v-if="esSeccionExpandida(equipo.id, 'fotos-despues')">
-                                            <div class="px-3 py-2 bg-white space-y-1.5 border-t border-gray-100">
+                                            <div class="px-3 py-2 bg-white space-y-1.5 border-t border-stone-200">
                                                 <div v-if="equipo.fotos_despues?.length > 0" class="space-y-1">
                                                     <div v-for="(foto, idx) in equipo.fotos_despues" :key="'despues-' + idx"
-                                                        class="flex items-center justify-between text-xs bg-gray-50/60 px-3 py-1.5 rounded border border-gray-200 hover:bg-gray-50 transition">
+                                                        class="flex items-center justify-between text-xs bg-stone-50/60 px-3 py-1.5 rounded border border-stone-200 hover:bg-stone-50 transition">
                                                         <div class="flex items-center gap-2">
-                                                            <svg class="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            <svg class="w-4 h-4 text-stone-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                                                             </svg>
-                                                            <span class="text-gray-700 font-medium">Foto {{ idx + 1 }}</span>
+                                                            <span class="text-stone-700 font-medium">Foto {{ idx + 1 }}</span>
                                                         </div>
                                                         <div class="flex items-center gap-2">
-                                                            <button @click="fotoAmpliada = foto.url"
+                                                            <button @click="abrirFotoAmpliada(foto.url)"
                                                                 :class="buttonClass('primary', 'xs')">
                                                                 Ver
                                                             </button>
@@ -1881,15 +2267,15 @@ const guardarBorrador = () => {
                                                         </div>
                                                     </div>
                                                 </div>
-                                                <div v-else class="text-xs text-gray-500 py-1.5 text-center">
+                                                <div v-else class="text-xs text-stone-500 py-1.5 text-center">
                                                     Sin evidencia final registrada
                                                 </div>
                                                 <label v-if="!completado && puedeGestionarEvidenciaFinal"
-                                                    class="flex items-center justify-center gap-2 w-full rounded border border-dashed border-gray-300 bg-gray-50 py-2 px-3 cursor-pointer hover:bg-gray-100 transition mt-1">
-                                                    <svg class="h-4 w-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    class="flex items-center justify-center gap-2 w-full rounded border border-dashed border-stone-300 bg-stone-50 py-2 px-3 cursor-pointer hover:bg-stone-100 transition mt-1">
+                                                    <svg class="h-4 w-4 text-stone-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
                                                     </svg>
-                                                    <span class="text-xs font-medium text-gray-700">Agregar evidencia final</span>
+                                                    <span class="text-xs font-medium text-stone-700">Agregar evidencia final</span>
                                                     <input type="file" accept="image/*" multiple class="hidden"
                                                         @change="subirFotos($event, equipo.id, 'DESPUES')" />
                                                 </label>
@@ -1897,6 +2283,34 @@ const guardarBorrador = () => {
                                         </div>
                                     </Transition>
                                 </div>
+
+                                <!-- SECCIÓN: Soluciones aplicadas -->
+                                <div class="rounded-md border border-stone-200 bg-white px-3 py-2">
+                                    <div class="space-y-2">
+                                        <div v-if="equipo.soluciones?.length || (puedeGestionarEvidenciaFinal && puedeAgregarSolucionComplementariaEquipo(equipo))">
+                                            <div class="mb-1 flex items-center justify-between gap-2">
+                                                <p class="text-[11px] text-stone-500 font-semibold uppercase tracking-wide">Soluciones aplicadas</p>
+                                                <button
+                                                    v-if="puedeGestionarEvidenciaFinal && puedeAgregarSolucionComplementariaEquipo(equipo)"
+                                                    @click.stop="abrirModalSolucionesComplementarias(equipo)"
+                                                    :class="buttonClass('emerald', 'xs', 'w-auto self-start px-2 py-1 text-[10px] leading-tight sm:px-2.5 sm:py-1.5 sm:text-[11px]')"
+                                                >
+                                                    <span class="sm:hidden"><b>+</b> Solución complementaria</span>
+                                                    <span class="hidden sm:inline">Agregar solución complementaria</span>
+                                                </button>
+                                            </div>
+                                            <ul v-if="equipo.soluciones?.length" class="space-y-1.5">
+                                                <li v-for="sol in equipo.soluciones" :key="sol" class="flex items-start gap-2 text-xs font-medium text-stone-800">
+                                                    <svg class="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+                                                    </svg>
+                                                    <span class="break-words">{{ sol }}</span>
+                                                </li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </div>
+
                                 </div>
                                 </div>
                             </Transition>
@@ -1904,14 +2318,14 @@ const guardarBorrador = () => {
                     </div>
                 </div>
                 <div v-if="historial.length > 0"
-                    class="rounded-xl bg-white shadow-sm border border-gray-100 overflow-hidden">
-                    <div class="bg-gray-50 border-b border-gray-100 px-4 py-2.5">
-                        <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-400">Historial</h3>
+                    class="rounded-xl bg-white shadow-sm border border-stone-200 overflow-hidden">
+                    <div class="bg-stone-50 border-b border-stone-200 px-4 py-2.5">
+                        <h3 class="text-xs font-semibold uppercase tracking-wide text-stone-500">Historial</h3>
                     </div>
                     <div class="px-4 py-3">
                         <div class="relative">
                             <!-- Línea vertical -->
-                            <div class="absolute left-2 top-2 bottom-2 w-0.5 bg-gray-100"></div>
+                            <div class="absolute left-2 top-2 bottom-2 w-0.5 bg-stone-100"></div>
                             <div class="space-y-4">
                                 <div v-for="(item, index) in historial" :key="index"
                                     class="relative flex gap-3 pl-7">
@@ -1920,13 +2334,13 @@ const guardarBorrador = () => {
                                         :class="historialEstadoColor(item.estado)"></div>
                                     <div class="flex-1 min-w-0">
                                         <div class="flex items-center justify-between gap-2">
-                                            <p class="text-sm font-medium text-gray-900">{{ item.estado }}</p>
-                                            <p class="text-xs text-gray-400 shrink-0">{{ item.fecha }}</p>
+                                            <p class="text-sm font-medium text-stone-900">{{ item.estado }}</p>
+                                            <p class="text-xs text-stone-500 shrink-0">{{ item.fecha }}</p>
                                         </div>
-                                        <p v-if="item.observaciones" class="text-xs text-gray-500 mt-0.5">
+                                        <p v-if="item.observaciones" class="text-xs text-stone-500 mt-0.5">
                                             {{ item.observaciones }}
                                         </p>
-                                        <p v-if="item.usuario" class="text-xs text-gray-400">
+                                        <p v-if="item.usuario" class="text-xs text-stone-500">
                                             {{ item.usuario }}
                                         </p>
                                     </div>
@@ -1937,9 +2351,9 @@ const guardarBorrador = () => {
                 </div>
 
                 <!-- ── Sección: Firma del cliente ── -->
-<div v-if="completado" class="rounded-xl bg-white shadow-sm border border-gray-100 overflow-hidden">
-    <div class="bg-gray-50 border-b border-gray-100 px-4 py-2.5 flex items-center justify-between">
-        <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-400">Firma del cliente</h3>
+<div v-if="completado" class="rounded-xl bg-white shadow-sm border border-stone-200 overflow-hidden">
+    <div class="bg-stone-50 border-b border-stone-200 px-4 py-2.5 flex items-center justify-between">
+        <h3 class="text-xs font-semibold uppercase tracking-wide text-stone-500">Firma del cliente</h3>
         <span v-if="completado && visita.tiene_firma"
             class="inline-flex items-center gap-1 text-xs text-green-600 font-medium">
             <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1952,18 +2366,18 @@ const guardarBorrador = () => {
 
         <!-- Visita completada — mostrar firma -->
         <div v-if="completado && visita.firma_url">
-            <div class="rounded-xl border border-gray-100 bg-gray-50 p-3 flex items-center justify-center">
+            <div class="rounded-xl border border-stone-200 bg-stone-50 p-3 flex items-center justify-center">
                 <img :src="visita.firma_url"
                     class="max-h-32 w-auto rounded-lg cursor-pointer"
-                    @click="fotoAmpliada = visita.firma_url" />
+                    @click="abrirFotoAmpliada(visita.firma_url)" />
             </div>
-            <p class="mt-2 text-xs text-gray-400 text-center">Firma registrada el {{ visita.fecha_fin ?? visita.fecha_inicio }}</p>
+            <p class="mt-2 text-xs text-stone-500 text-center">Firma registrada el {{ visita.fecha_fin ?? visita.fecha_inicio }}</p>
         </div>
 
         <!-- Visita completada sin firma -->
         <div v-else-if="completado && !visita.firma_url"
-            class="rounded-xl border border-dashed border-gray-200 bg-gray-50 py-6 text-center">
-            <p class="text-sm text-gray-400">Sin firma registrada</p>
+            class="rounded-xl border border-dashed border-stone-200 bg-stone-50 py-6 text-center">
+            <p class="text-sm text-stone-500">Sin firma registrada</p>
         </div>
     </div>
 </div>
@@ -1990,11 +2404,21 @@ const guardarBorrador = () => {
                         Finalizar
                     </button>
                 </div>
-                <div v-else class="flex">
+                <div v-else class="flex flex-col gap-3 sm:flex-row">
                     <a :href="route('visitastecnicas.visitas.index')"
                         :class="buttonClass('neutral', 'lg', 'flex-1 text-center')">
                         Volver al listado
                     </a>
+                    <button
+                        @click="descargarInforme"
+                        :class="buttonClass('primary', 'lg', 'flex-1')">
+                        Descargar informe
+                    </button>
+                    <button
+                        @click="abrirModalReenviarInforme"
+                        :class="buttonClass('emerald', 'lg', 'flex-1')">
+                        Reenviar informe
+                    </button>
                 </div>
 
             </div>
@@ -2063,16 +2487,24 @@ const guardarBorrador = () => {
                                 <label class="block text-xs font-medium text-slate-700">Buscar Equipo <span class="text-red-500">*</span></label>
                             </div>
                             <div class="relative">
-                                <input v-model="herramientasBusqueda" @input="buscarHerramientas" type="text" placeholder="Buscar por código, descripción, referencia o codigo de comodidad..."
-                                    class="block w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
-                                <div v-if="herramientasCargando" class="absolute right-3 top-3.5">
-                                    <svg class="h-4 w-4 animate-spin text-slate-400" fill="none" viewBox="0 0 24 24">
-                                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-                                    </svg>
+                                <input v-model="herramientasBusqueda" type="text" placeholder="Buscar por CodMax, Nombre, Ref o Cod Comodidad"
+                                    @input="buscarHerramientas"
+                                    @keydown.enter.prevent="buscarHerramientas"
+                                    class="block w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 pr-14 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[#C8102E] focus:ring-4 focus:ring-red-100" />
+                                    <button type="button" @click="buscarHerramientas" aria-label="Buscar equipo"
+                                        class="absolute right-3 top-1/2 -translate-y-1/2 inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 shadow-sm z-20">
+                                        <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M11 18a7 7 0 100-14 7 7 0 000 14z" />
+                                        </svg>
+                                    </button>
                                 </div>
+                            <div v-if="herramientasCargando" class="mt-2 flex items-center justify-center rounded-2xl border border-slate-200 bg-white py-6 shadow-sm">
+                                <svg class="h-5 w-5 animate-spin text-slate-400" fill="none" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                                </svg>
                             </div>
-                            <div v-if="herramientasResultados.length > 0" class="max-h-48 overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
+                            <div v-else-if="herramientasResultados.length > 0" class="max-h-48 overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
                                 <div v-for="item in herramientasResultados" :key="item.codigo"
                                     @click="seleccionarHerramienta(item)"
                                     class="cursor-pointer border-b border-slate-100 px-4 py-2.5 transition hover:bg-slate-50 last:border-b-0">
@@ -2088,6 +2520,9 @@ const guardarBorrador = () => {
                                     </div>
                                 </div>
                             </div>
+                            <div v-else-if="herramientasBuscada && herramientasResultados.length === 0" class="mt-2 rounded-2xl border border-slate-200 bg-white py-3 px-4 text-sm text-slate-500">
+                                No hay resultados de tu búsqueda
+                            </div>
                             <div v-if="herramientaSeleccionada" class="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-2.5">
                                 <p class="text-[11px] font-semibold uppercase tracking-[0.14em] text-blue-600">Seleccionado</p>
                                 <p class="mt-1 text-sm font-semibold text-slate-900">{{ herramientaSeleccionada.descripcion }}</p>
@@ -2100,9 +2535,23 @@ const guardarBorrador = () => {
                                         v-model="formEquipo.serial"
                                         type="text"
                                         placeholder="Serial del equipo"
-                                        class="block w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
+                                        class="block w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[#C8102E] focus:ring-4 focus:ring-red-100" />
                                     <p v-if="formEquipo.errors.serial" class="mt-1.5 text-xs text-red-600">
                                         {{ formEquipo.errors.serial }}
+                                    </p>
+                                </div>
+                                <div>
+                                    <label class="mb-1.5 block text-xs font-medium text-slate-700">Tipo de mantenimiento <span class="text-red-500">*</span></label>
+                                    <select
+                                        v-model="formEquipo.id_tipo_mant"
+                                        class="block w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-800 focus:border-[#C8102E] focus:ring-4 focus:ring-red-100">
+                                        <option value="">Selecciona una opcion</option>
+                                        <option v-for="tipo in tiposMantOrdenados" :key="tipo.ID" :value="tipo.ID">
+                                            {{ tipo.TIPO_MANT }}
+                                        </option>
+                                    </select>
+                                    <p v-if="formEquipo.errors.id_tipo_mant" class="mt-1.5 text-xs text-red-600">
+                                        {{ formEquipo.errors.id_tipo_mant }}
                                     </p>
                                 </div>
                             </div>
@@ -2125,7 +2574,7 @@ const guardarBorrador = () => {
                                         </div>
                                         <div class="flex items-center gap-3 shrink-0">
                                             <button type="button"
-                                                @click="fotoAmpliada = foto.url"
+                                                @click="abrirFotoAmpliada(foto.url)"
                                                 :class="buttonClass('primary', 'xs')">
                                                 Ver
                                             </button>
@@ -2156,63 +2605,171 @@ const guardarBorrador = () => {
                         <section v-if="pasoEquipoActual === 2" class="space-y-3 rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm shadow-slate-200/50">
                             <div class="space-y-2.5 rounded-2xl border border-slate-200 bg-slate-50 p-3.5">
                                 <div>
-                                    <p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Descripcion de falla</p>
-                                    <p class="mt-1 text-xs text-slate-500">Describe con claridad el problema identificado en campo.</p>
+                                    <p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Fallas identificadas</p>
+                                    <p class="mt-1 text-xs text-slate-500">Selecciona una o varias fallas.</p>
                                 </div>
-                                <div>
-                                    <label class="mb-1.5 block text-xs font-medium text-slate-700">Descripcion de falla <span class="text-red-500">*</span></label>
-                                    <textarea v-model="formEquipo.descripcion_falla" rows="3"
-                                        class="block w-full resize-none rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-800 focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
-                                    <p v-if="formEquipo.errors.descripcion_falla" class="mt-1.5 text-xs text-red-600">
-                                        {{ formEquipo.errors.descripcion_falla }}
+                                <div class="relative">
+                                    <button
+                                        type="button"
+                                        class="flex w-full items-center justify-between gap-3 rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-left text-sm text-slate-700 shadow-sm transition hover:border-slate-400 focus:border-[#C8102E] focus:outline-none focus:ring-4 focus:ring-red-100"
+                                        @click="fallasDropdownAbierto = !fallasDropdownAbierto"
+                                        @keydown.escape="fallasDropdownAbierto = false"
+                                    >
+                                        <span>{{ textoResumenFallas }}</span>
+                                        <svg class="h-4 w-4 text-slate-400 transition" :class="fallasDropdownAbierto ? 'rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+                                        </svg>
+                                    </button>
+
+                                    <div
+                                        v-if="fallasDropdownAbierto"
+                                        class="absolute left-0 right-0 z-30 mt-1 overflow-hidden rounded-xl border border-slate-300 bg-white shadow-xl shadow-slate-900/10"
+                                    >
+                                        <div class="border-b border-slate-200 p-2">
+                                            <input
+                                                v-model="fallasBusqueda"
+                                                type="text"
+                                                placeholder="Buscar..."
+                                                class="block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[#C8102E] focus:ring-2 focus:ring-red-100"
+                                            />
+                                        </div>
+                                        <div class="max-h-56 overflow-y-auto py-1">
+                                            <label
+                                                v-for="falla in tiposFallaFiltradas"
+                                                :key="falla.ID"
+                                                class="flex cursor-pointer items-center gap-2 border-b border-slate-100 px-3 py-2 text-sm font-medium text-slate-800 transition last:border-b-0 hover:bg-slate-50"
+                                            >
+                                                <input
+                                                    type="checkbox"
+                                                    class="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                                                    :checked="fallaSeleccionada(falla.ID)"
+                                                    @change="toggleFalla(falla.ID)"
+                                                />
+                                                <span>{{ falla.DESCRIPCION }}</span>
+                                            </label>
+
+                                            <p v-if="tiposFallaFiltradas.length === 0" class="px-3 py-2 text-xs text-slate-500">
+                                                No hay fallas configuradas para esta busqueda.
+                                            </p>
+
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div v-if="totalFallasSeleccionadas > 0" class="flex flex-wrap gap-2">
+                                    <span
+                                        v-for="falla in fallasSeleccionadasDetalle"
+                                        :key="`falla-${falla.ID}`"
+                                        class="inline-flex max-w-full items-center gap-2 rounded-full border border-blue-200 bg-blue-50 py-1 pl-3 pr-1 text-xs font-medium text-blue-700"
+                                    >
+                                        <span class="truncate">{{ falla.DESCRIPCION }}</span>
+                                        <button
+                                            type="button"
+                                            class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-blue-200 bg-blue-100 text-blue-800 transition hover:bg-blue-200"
+                                            @click="quitarFalla(falla.ID)"
+                                            aria-label="Quitar falla"
+                                        >
+                                            x
+                                        </button>
+                                    </span>
+                                </div>
+
+                                <!-- Campo de texto para "Otros" (ID 34) -->
+                                <div v-if="fallaOtrosSeleccionada" class="mt-2">
+                                    <label class="mb-1.5 block text-xs font-medium text-slate-700">
+                                        Describe la falla... <span class="text-red-500">*</span>
+                                    </label>
+                                    <textarea
+                                        v-model="descripcionOtros"
+                                        placeholder="Describe la falla..."
+                                        rows="3"
+                                        class="block w-full resize-none rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[#C8102E] focus:ring-4 focus:ring-red-100"
+                                    ></textarea>
+                                    <p v-if="formEquipo.errors.descripcion_otros" class="mt-1.5 text-xs text-red-600">
+                                        {{ formEquipo.errors.descripcion_otros }}
                                     </p>
                                 </div>
-                            </div>
-                            <div>
-                                <p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Tipo de solucion</p>
-                                <p class="mt-1 text-xs text-slate-500">Selecciona la accion realizada sobre el equipo.</p>
-                            </div>
-                            <div class="rounded-2xl border border-slate-200 bg-white p-2.5">
-                                <div class="flex flex-wrap gap-2">
-                                    <button
-                                        v-for="s in tiposSolucionOrdenados"
-                                        :key="s.ID"
-                                        type="button"
-                                        @click="toggleSolucion(s.ID)"
-                                        :disabled="solucionBloqueada(s.ID)"
-                                        :class="[
-                                            solucionSeleccionada(s.ID)
-                                                ? 'border-blue-200 bg-blue-600 text-white shadow-sm shadow-blue-200/70 scale-[1.02]'
-                                                : 'border-slate-200 bg-slate-50 text-slate-700 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700',
-                                            solucionBloqueada(s.ID)
-                                                ? 'cursor-not-allowed opacity-45'
-                                                : 'cursor-pointer',
-                                        ]"
-                                        class="inline-flex items-center rounded-full border px-3 py-1.5 text-[11px] font-semibold leading-none transition-all duration-200 ease-out"
-                                    >
-                                        {{ s.TIPO_SOLUCION }}
-                                    </button>
-                                </div>
-                                <p class="mt-3 text-[11px] text-slate-500">
-                                    {{ formEquipo.id_solucion.length }} seleccionada<span v-if="formEquipo.id_solucion.length !== 1">s</span>
-                                </p>
-                                <p
-                                    v-if="!equipoEditandoId && formEquipo.id_solucion.some(id => esSolucionCambioRepuestos(id))"
-                                    class="mt-1 text-[11px] text-blue-600"
-                                >
-                                    Cambio de repuestos activa el paso 3.
-                                </p>
-                                <p
-                                    v-else-if="tiposSolucionOrdenados.some(s => solucionBloqueada(s.ID))"
-                                    class="mt-1 text-[11px] text-slate-500"
-                                >
-                                    Cambio de repuestos no se puede combinar con otras soluciones.
-                                </p>
-                            </div>
 
-                            <p v-if="formEquipo.errors.id_solucion" class="mt-2 text-xs text-red-600">
-                                {{ formEquipo.errors.id_solucion }}
-                            </p>
+                                <p v-if="formEquipo.errors.id_tipo_falla" class="mt-1.5 text-xs text-red-600">
+                                    {{ formEquipo.errors.id_tipo_falla }}
+                                </p>
+                            </div>
+                            <div class="space-y-2.5 rounded-2xl border border-slate-200 bg-slate-50 p-3.5">
+                                <div>
+                                    <p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Tipo de solucion</p>
+                                    <p class="mt-1 text-xs text-slate-500">Selecciona la accion realizada sobre el equipo.</p>
+                                </div>
+                                <div class="relative">
+                                    <button
+                                        type="button"
+                                        class="flex w-full items-center justify-between gap-3 rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-left text-sm text-slate-700 shadow-sm transition hover:border-slate-400 focus:border-[#C8102E] focus:outline-none focus:ring-4 focus:ring-red-100"
+                                        @click="solucionesDropdownAbierto = !solucionesDropdownAbierto"
+                                        @keydown.escape="solucionesDropdownAbierto = false"
+                                    >
+                                        <span>{{ textoResumenSoluciones }}</span>
+                                        <svg class="h-4 w-4 text-slate-400 transition" :class="solucionesDropdownAbierto ? `rotate-180` : ``" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+                                        </svg>
+                                    </button>
+
+                                    <div
+                                        v-if="solucionesDropdownAbierto"
+                                        class="absolute left-0 right-0 z-30 mt-1 overflow-hidden rounded-xl border border-slate-300 bg-white shadow-xl shadow-slate-900/10"
+                                    >
+                                        <div class="border-b border-slate-200 p-2">
+                                            <input
+                                                v-model="solucionesBusqueda"
+                                                type="text"
+                                                placeholder="Buscar..."
+                                                class="block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[#C8102E] focus:ring-2 focus:ring-red-100"
+                                            />
+                                        </div>
+                                        <div class="max-h-56 overflow-y-auto py-1">
+                                            <label
+                                                v-for="s in tiposSolucionFiltrados"
+                                                :key="s.ID"
+                                                class="flex cursor-pointer items-center gap-2 border-b border-slate-100 px-3 py-2 text-sm font-medium text-slate-800 transition last:border-b-0 hover:bg-slate-50"
+                                                :class="solucionBloqueada(s.ID) ? `opacity-45 cursor-not-allowed` : ``"
+                                            >
+                                                <input
+                                                    type="checkbox"
+                                                    class="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 disabled:cursor-not-allowed"
+                                                    :checked="solucionSeleccionada(s.ID)"
+                                                    :disabled="solucionBloqueada(s.ID)"
+                                                    @change="toggleSolucion(s.ID)"
+                                                />
+                                                <span>{{ s.TIPO_SOLUCION }}</span>
+                                            </label>
+
+                                            <p v-if="tiposSolucionFiltrados.length === 0" class="px-3 py-2 text-xs text-slate-500">
+                                                No hay soluciones configuradas para esta busqueda.
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div v-if="formEquipo.id_solucion.length > 0" class="flex flex-wrap gap-2">
+                                    <span
+                                        v-for="solucion in solucionesSeleccionadasDetalle"
+                                        :key="`solucion-chip-${solucion.ID}`"
+                                        class="inline-flex max-w-full items-center gap-2 rounded-full border border-blue-200 bg-blue-50 py-1 pl-3 pr-1 text-xs font-medium text-blue-700"
+                                    >
+                                        <span class="truncate">{{ solucion.TIPO_SOLUCION }}</span>
+                                        <button
+                                            type="button"
+                                            class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-blue-200 bg-blue-100 text-blue-800 transition hover:bg-blue-200"
+                                            @click="quitarSolucion(solucion.ID)"
+                                            aria-label="Quitar solucion"
+                                        >
+                                            x
+                                        </button>
+                                    </span>
+                                </div>
+
+                                <p v-if="formEquipo.errors.id_solucion" class="mt-1.5 text-xs text-red-600">
+                                    {{ formEquipo.errors.id_solucion }}
+                                </p>
+                            </div>
 
                             <div
                                 v-if="equipoEditandoId && requiereRepuestos(formEquipo.id_solucion)"
@@ -2224,7 +2781,7 @@ const guardarBorrador = () => {
                             <div class="space-y-1.5 rounded-2xl border border-slate-200 bg-slate-50 p-3.5">
                                 <label class="block text-xs font-medium text-slate-700">Observaciones</label>
                                 <textarea v-model="formEquipo.observaciones" rows="2"
-                                    class="block w-full resize-none rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-800 focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
+                                    class="block w-full resize-none rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-800 focus:border-[#C8102E] focus:ring-4 focus:ring-red-100"></textarea>
                             </div>
                         </section>
 
@@ -2251,15 +2808,21 @@ const guardarBorrador = () => {
                                     <label class="mb-1.5 block text-xs font-medium text-slate-700">Buscar repuesto</label>
                                     <div class="relative">
                                         <input v-model="repuestosBusqueda" @input="buscarRepuestos" type="text" placeholder="Codigo, descripcion, referencia o codigo de comodidad..."
-                                            class="block w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
-                                        <div v-if="repuestosCargando" class="absolute right-3 top-3.5">
-                                            <svg class="h-4 w-4 animate-spin text-slate-400" fill="none" viewBox="0 0 24 24">
-                                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                                            class="block w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 pr-14 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[#C8102E] focus:ring-4 focus:ring-red-100" />
+                                        <button type="button" @click="buscarRepuestos" aria-label="Buscar repuesto"
+                                            class="absolute right-3 top-1/2 -translate-y-1/2 inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 shadow-sm z-20">
+                                            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M11 18a7 7 0 100-14 7 7 0 000 14z" />
                                             </svg>
+                                        </button>
                                         </div>
+                                    <div v-if="repuestosCargando" class="mt-2 flex items-center justify-center rounded-2xl border border-slate-200 bg-white py-6 shadow-sm">
+                                        <svg class="h-5 w-5 animate-spin text-slate-400" fill="none" viewBox="0 0 24 24">
+                                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                                        </svg>
                                     </div>
-                                    <div v-if="repuestosResultados.length > 0" class="mt-2 max-h-56 overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
+                                    <div v-else-if="repuestosResultados.length > 0" class="mt-2 max-h-56 overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
                                         <div v-for="item in repuestosResultados" :key="item.codigo"
                                             @click="seleccionarRepuesto(item)"
                                             class="cursor-pointer border-b border-slate-100 px-4 py-2.5 transition hover:bg-slate-50 last:border-b-0">
@@ -2278,6 +2841,9 @@ const guardarBorrador = () => {
                                             </div>
                                         </div>
                                     </div>
+                                    <div v-else-if="repuestosBuscada && repuestosResultados.length === 0" class="mt-2 rounded-2xl border border-slate-200 bg-white py-3 px-4 text-sm text-slate-500">
+                                        No hay resultados de tu búsqueda
+                                    </div>
                                 </div>
 
                                 <div v-if="repuestoSeleccionado" class="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-xs text-emerald-800">
@@ -2288,7 +2854,7 @@ const guardarBorrador = () => {
                                     <div>
                                         <label class="mb-1.5 block text-xs font-medium text-slate-700">Cantidad</label>
                                         <input v-model.number="formRepuesto.cantidad" type="number" min="1"
-                                            class="block w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-800 focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
+                                            class="block w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-800 focus:border-[#C8102E] focus:ring-4 focus:ring-red-100" />
                                         <p v-if="formRepuesto.errors.cantidad" class="mt-1.5 text-xs text-red-600">
                                             {{ formRepuesto.errors.cantidad }}
                                         </p>
@@ -2296,7 +2862,7 @@ const guardarBorrador = () => {
                                     <div>
                                         <label class="mb-1.5 block text-xs font-medium text-slate-700">Observacion (opcional)</label>
                                             <textarea v-model="formRepuesto.observacion" rows="1" placeholder="Nota adicional..."
-                                            class="block w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-800 focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
+                                            class="block w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-800 focus:border-[#C8102E] focus:ring-4 focus:ring-red-100"></textarea>
                                     </div>
                                 </div>
 
@@ -2309,6 +2875,18 @@ const guardarBorrador = () => {
                                     <span>
                                         Marcar como resuelto en campo.
                                         <span class="block text-emerald-700">El repuesto quedará instalado y no pasará por cotización.</span>
+                                    </span>
+                                </label>
+
+                                <label class="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-900">
+                                    <input
+                                        v-model="formRepuesto.es_urgente"
+                                        type="checkbox"
+                                        class="mt-0.5 h-4 w-4 rounded border-red-300 text-red-600 focus:ring-red-500"
+                                    />
+                                    <span>
+                                        Marcar como urgente.
+                                        <span class="block text-red-700">Este repuesto será prioritario.</span>
                                     </span>
                                 </label>
 
@@ -2329,16 +2907,19 @@ const guardarBorrador = () => {
                             <div v-if="repuestosTemporal.length > 0" class="rounded-2xl border border-slate-200 bg-white p-2.5 shadow-sm">
                                 <p class="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Repuestos agregados</p>
                                 <div class="max-h-56 space-y-2 overflow-y-auto pr-1">
-                                    <div v-for="(r, idx) in repuestosTemporal" :key="idx" class="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs">
-                                        <div class="min-w-0 flex-1">
-                                            <p class="font-medium text-slate-900">{{ r.descripcion }}</p>
-                                            <div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500">
-                                                <span>Cod. {{ r.codigo }}</span>
-                                                <span>Cantidad: {{ r.cantidad }}</span>
-                                            </div>
-                                            <p class="mt-1 text-emerald-700">Stock: {{ formatearInventario(r.inventario) }}</p>
-                                            <p v-if="r.resolver_en_campo" class="mt-1 text-emerald-700">Resuelto en campo</p>
-                                        </div>
+                                            <div v-for="(r, idx) in repuestosTemporal" :key="idx" class="flex items-center justify-between rounded-xl border bg-slate-50 p-3 text-xs" :class="r.es_urgente ? 'border-red-300 bg-red-50' : 'border-slate-200'">
+                                                <div class="min-w-0 flex-1">
+                                                    <div class="flex items-center gap-2">
+                                                        <p class="font-medium text-slate-900">{{ r.descripcion }}</p>
+                                                        <span v-if="r.es_urgente" class="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700">URGENTE</span>
+                                                    </div>
+                                                    <div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500">
+                                                        <span>Cod. {{ r.codigo }}</span>
+                                                        <span>Cantidad: {{ r.cantidad }}</span>
+                                                    </div>
+                                                    <p class="mt-1 text-emerald-700">Stock: {{ formatearInventario(r.inventario) }}</p>
+                                                    <p v-if="r.resolver_en_campo" class="mt-1 text-emerald-700">Resuelto en campo</p>
+                                                </div>
                                         <div class="ml-2 flex shrink-0 items-center gap-2">
                                             <button
                                                 @click="editarRepuestoTemporal(idx)"
@@ -2427,33 +3008,45 @@ const guardarBorrador = () => {
                         <div class="relative">
                             <input v-model="repuestosBusqueda" @input="buscarRepuestos" type="text" placeholder="Codigo, descripcion, referencia o codigo de comodidad..."
                                 :disabled="!!repuestoEditandoId"
-                                class="block w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500" />
-                            <div v-if="repuestosCargando" class="absolute right-3 top-3.5">
-                                <svg class="h-4 w-4 animate-spin text-slate-400" fill="none" viewBox="0 0 24 24">
+                                class="block w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 pr-14 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[#C8102E] focus:ring-4 focus:ring-red-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500" />
+                            <button v-if="!repuestoEditandoId" type="button" @click="buscarRepuestos" aria-label="Buscar repuesto"
+                                class="absolute right-3 top-1/2 -translate-y-1/2 inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 shadow-sm z-20">
+                                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M11 18a7 7 0 100-14 7 7 0 000 14z" />
+                                </svg>
+                            </button>
+                            </div>
+                            <div v-if="repuestoEditandoId">
+                                <!-- when editing, don't show results -->
+                            </div>
+                            <div v-else-if="repuestosCargando" class="mt-2 flex items-center justify-center rounded-2xl border border-slate-200 bg-white py-6 shadow-sm">
+                                <svg class="h-5 w-5 animate-spin text-slate-400" fill="none" viewBox="0 0 24 24">
                                     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                                     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
                                 </svg>
                             </div>
-                        </div>
-                        <div v-if="!repuestoEditandoId && repuestosResultados.length > 0" class="mt-2 max-h-56 overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
-                            <div v-for="item in repuestosResultados" :key="item.codigo"
-                                @click="seleccionarRepuesto(item)"
-                                class="cursor-pointer border-b border-slate-100 px-4 py-2.5 transition hover:bg-slate-50 last:border-b-0">
-                                <div class="flex items-start justify-between gap-3">
-                                    <div class="min-w-0 flex-1">
-                                        <p class="truncate text-sm font-semibold text-slate-900">{{ item.descripcion }}</p>
-                                        <div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500">
-                                            <span>Cod. {{ item.codigo }}</span>
-                                            <span v-if="item.referencia">Ref. {{ item.referencia }}</span>
-                                            <span v-if="item.proveedor">Comod. {{ item.proveedor }}</span>
+                            <div v-else-if="!repuestoEditandoId && repuestosResultados.length > 0" class="mt-2 max-h-56 overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
+                                <div v-for="item in repuestosResultados" :key="item.codigo"
+                                    @click="seleccionarRepuesto(item)"
+                                    class="cursor-pointer border-b border-slate-100 px-4 py-2.5 transition hover:bg-slate-50 last:border-b-0">
+                                    <div class="flex items-start justify-between gap-3">
+                                        <div class="min-w-0 flex-1">
+                                            <p class="truncate text-sm font-semibold text-slate-900">{{ item.descripcion }}</p>
+                                            <div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500">
+                                                <span>Cod. {{ item.codigo }}</span>
+                                                <span v-if="item.referencia">Ref. {{ item.referencia }}</span>
+                                                <span v-if="item.proveedor">Comod. {{ item.proveedor }}</span>
+                                            </div>
                                         </div>
-                                    </div>
-                                    <div class="shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold" :class="claseStock(item.inventario)">
-                                        {{ textoStock(item.inventario) }}
+                                        <div class="shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold" :class="claseStock(item.inventario)">
+                                            {{ textoStock(item.inventario) }}
+                                        </div>
                                     </div>
                                 </div>
                             </div>
-                        </div>
+                            <div v-else-if="repuestosBuscada && repuestosResultados.length === 0" class="mt-2 rounded-2xl border border-slate-200 bg-white py-3 px-4 text-sm text-slate-500">
+                                No hay resultados de tu búsqueda
+                            </div>
                     </div>
                     <div v-if="repuestoSeleccionado" class="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-xs text-emerald-800">
                         Inventario disponible: <span class="font-semibold">{{ formatearInventario(repuestoSeleccionado.inventario) }}</span>
@@ -2461,12 +3054,12 @@ const guardarBorrador = () => {
                     <div>
                         <label class="mb-1.5 block text-xs font-medium text-slate-700">Cantidad</label>
                         <input v-model.number="formRepuesto.cantidad" type="number" min="1"
-                            class="block w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-800 focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
+                            class="block w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-800 focus:border-[#C8102E] focus:ring-4 focus:ring-red-100" />
                     </div>
                     <div>
                         <label class="mb-1.5 block text-xs font-medium text-slate-700">Observacion (opcional)</label>
                         <textarea v-model="formRepuesto.observacion" rows="2" placeholder="Nota adicional..."
-                            class="block w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-800 focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
+                            class="block w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-800 focus:border-[#C8102E] focus:ring-4 focus:ring-red-100"></textarea>
                     </div>
                     <label class="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-900">
                         <input
@@ -2477,6 +3070,17 @@ const guardarBorrador = () => {
                         <span>
                             Marcar como resuelto en campo.
                             <span class="block text-emerald-700">El repuesto quedará instalado y no pasará por cotización.</span>
+                        </span>
+                    </label>
+                    <label class="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-900">
+                        <input
+                            v-model="formRepuesto.es_urgente"
+                            type="checkbox"
+                            class="mt-0.5 h-4 w-4 rounded border-red-300 text-red-600 focus:ring-red-500"
+                        />
+                        <span>
+                            Marcar como urgente.
+                            <span class="block text-red-700">Este repuesto será prioritario.</span>
                         </span>
                     </label>
                 </div>
@@ -2500,8 +3104,8 @@ const guardarBorrador = () => {
         <!-- ── Modal: Finalizar ── -->
         <div v-if="modalFinalizar" class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-4">
             <div class="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
-                <h3 class="mb-2 text-base font-semibold text-gray-900">Finalizar visita</h3>
-                <p class="mb-4 text-sm text-gray-500">¿Confirmas que el servicio fue realizado?</p>
+                <h3 class="mb-2 text-base font-semibold text-stone-900">Finalizar visita</h3>
+                <p class="mb-4 text-sm text-stone-500">¿Confirmas que el servicio fue realizado?</p>
                 <div v-if="mostrarAlertaFinalizacion && camposFaltantesFinalizacion.length"
                     class="mb-4 rounded-xl border border-red-200 bg-red-50 p-3">
                     <p class="text-sm font-semibold text-red-700">Faltan campos obligatorios para finalizar la visita:</p>
@@ -2511,26 +3115,26 @@ const guardarBorrador = () => {
                         </li>
                     </ul>
                 </div>
-                <div v-if="!visita.es_capacitacion" class="mb-4 rounded-xl border border-gray-200 bg-gray-50 p-3 space-y-3">
+                <div v-if="!visita.es_capacitacion" class="mb-4 rounded-xl border border-stone-200 bg-stone-50 p-3 space-y-3">
                     <div>
-                        <label class="block text-xs font-medium text-gray-700 mb-1">Correo para informe técnico de la visita
+                        <label class="block text-xs font-medium text-stone-700 mb-1">Correo para informe técnico de la visita
 </label>
                         <input v-model="formServicio.correo_cliente" type="email"
-                            class="block w-full rounded-lg border-gray-300 text-sm py-2.5 focus:border-blue-500 focus:ring-blue-500" />
+                            class="block w-full rounded-lg border-stone-300 text-sm py-2.5 focus:border-[#C8102E] focus:ring-red-100" />
                     </div>
                     <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                         <div>
-                            <label class="block text-xs font-medium text-gray-700 mb-1">Fecha fin <span class="text-red-500">*</span></label>
+                            <label class="block text-xs font-medium text-stone-700 mb-1">Fecha fin <span class="text-red-500">*</span></label>
                             <input v-model="formFinalizar.fecha_fin" type="date" required
-                                class="block w-full rounded-lg border-gray-300 text-sm py-2.5 focus:border-blue-500 focus:ring-blue-500" />
+                                class="block w-full rounded-lg border-stone-300 text-sm py-2.5 focus:border-[#C8102E] focus:ring-red-100" />
                             <p v-if="formFinalizar.errors.fecha_fin" class="mt-1 text-xs text-red-600">
                                 {{ formFinalizar.errors.fecha_fin }}
                             </p>
                         </div>
                         <div>
-                            <label class="block text-xs font-medium text-gray-700 mb-1">Hora fin <span class="text-red-500">*</span></label>
+                            <label class="block text-xs font-medium text-stone-700 mb-1">Hora fin <span class="text-red-500">*</span></label>
                             <input v-model="formFinalizar.hora_fin" type="time" required
-                                class="block w-full rounded-lg border-gray-300 text-sm py-2.5 focus:border-blue-500 focus:ring-blue-500" />
+                                class="block w-full rounded-lg border-stone-300 text-sm py-2.5 focus:border-[#C8102E] focus:ring-red-100" />
                             <p v-if="formFinalizar.errors.hora_fin" class="mt-1 text-xs text-red-600">
                                 {{ formFinalizar.errors.hora_fin }}
                             </p>
@@ -2538,28 +3142,31 @@ const guardarBorrador = () => {
                     </div>
                 </div>
                 <div>
-                    <label class="block text-xs font-medium text-gray-700 mb-1">Observaciones finales</label>
+                    <label class="block text-xs font-medium text-stone-700 mb-1">Observaciones finales</label>
                     <textarea v-model="formFinalizar.observaciones" rows="3"
-                        class="block w-full rounded-lg border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500" />
+                        class="block w-full rounded-lg border-stone-300 text-sm focus:border-[#C8102E] focus:ring-red-100"></textarea>
                 </div>
-                <div v-if="!visita.es_capacitacion" class="mt-4">
+                <div v-if="!visita.es_capacitacion" class="mb-4 mt-4">
                     <div class="flex items-center justify-between mb-1">
-                        <label class="block text-sm font-medium text-gray-700">Firma del cliente</label>
+                        <label class="block text-sm font-medium text-gray-700">
+                            Firma del cliente
+                        </label>
                         <button type="button" @click="limpiarFirma"
-                            :class="buttonClass('neutral', 'xs')">
+                            class="text-xs text-gray-400 hover:text-gray-600 underline">
                             Limpiar
                         </button>
                     </div>
-                    <canvas ref="canvasFirma" width="600" height="150"
-                        class="w-full rounded-lg border-2 border-dashed border-gray-200 bg-gray-50 touch-none cursor-crosshair"
-                        @mousedown="iniciarFirma" @mousemove="dibujarFirma"
-                        @mouseup="terminarFirma" @mouseleave="terminarFirma"
-                        @touchstart.prevent="iniciarFirma" @touchmove.prevent="dibujarFirma"
-                        @touchend="terminarFirma" />
+                    <canvas ref="canvasFirma"
+                        class="block w-full rounded-lg border border-gray-300 bg-white shadow-inner touch-none cursor-crosshair"
+                        @pointerdown="iniciarFirma"
+                        @pointermove="dibujarFirma"
+                        @pointerup="terminarFirma"
+                        @pointercancel="terminarFirma"
+                        @pointerleave="terminarFirma" />
+                    <p class="mt-1 text-xs text-gray-400">Firma opcional</p>
                     <p v-if="formFinalizar.errors.firma" class="mt-1 text-xs text-red-600">
                         {{ formFinalizar.errors.firma }}
                     </p>
-                    <p v-else class="mt-1 text-xs text-gray-400">Puedes firmar en el recuadro si deseas adjuntar la evidencia del cierre.</p>
                 </div>
                 <div class="mt-5 flex gap-3">
                     <button @click="modalFinalizar = false"
@@ -2568,7 +3175,14 @@ const guardarBorrador = () => {
                     </button>
                     <button @click="finalizar" :disabled="formFinalizar.processing"
                         :class="buttonClass('success', 'md', 'flex-1')">
-                        Confirmar
+                        <span v-if="formFinalizar.processing" class="inline-flex items-center justify-center gap-2">
+                            <svg class="h-4 w-4 animate-spin text-white" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                            </svg>
+                            Procesando...
+                        </span>
+                        <span v-else>Confirmar</span>
                     </button>
                 </div>
             </div>
@@ -2576,7 +3190,7 @@ const guardarBorrador = () => {
 
         <div v-if="modalGuardadoBorrador" class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-4">
             <div class="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl">
-                <h3 class="text-base font-semibold text-gray-900">Los cambios han sido guardados</h3>
+                <h3 class="text-base font-semibold text-stone-900">Los cambios han sido guardados</h3>
                 <div class="mt-5">
                     <button
                         @click="modalGuardadoBorrador = false"
@@ -2588,10 +3202,90 @@ const guardarBorrador = () => {
             </div>
         </div>
 
+        <div v-if="modalInformeReenviado" class="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4 sm:items-center">
+            <div class="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl">
+                <h3 class="text-base font-semibold text-stone-900">Informe enviado exitosamente</h3>
+                <p class="mt-1 text-sm text-stone-500">El informe técnico fue reenviado al correo diligenciado.</p>
+                <div class="mt-5">
+                    <button
+                        @click="modalInformeReenviado = false"
+                        :class="buttonClass('primary', 'md', 'w-full')"
+                    >
+                        Entendido
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div v-if="modalCotizacionEnviada" class="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4 sm:items-center">
+            <div class="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl">
+                <h3 class="text-base font-semibold text-stone-900">Solicitud enviada exitosamente</h3>
+                <p class="mt-1 text-sm text-stone-500">La solicitud de cotización fue enviada al asesor.</p>
+                <div class="mt-5">
+                    <button
+                        @click="modalCotizacionEnviada = false"
+                        :class="buttonClass('primary', 'md', 'w-full')"
+                    >
+                        Entendido
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div v-if="modalFinalizacionExitosa" class="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4 sm:items-center">
+            <div class="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl">
+                <h3 class="text-base font-semibold text-stone-900">Informe enviado exitosamente</h3>
+                <p class="mt-1 text-sm text-stone-500">La visita fue finalizada y el informe técnico se envió correctamente.</p>
+                <div class="mt-5">
+                    <button
+                        @click="modalFinalizacionExitosa = false"
+                        :class="buttonClass('primary', 'md', 'w-full')"
+                    >
+                        Entendido
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div v-if="modalReenviarInforme" class="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4 sm:items-center">
+            <div class="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl">
+                <h3 class="text-base font-semibold text-stone-900">Reenviar informe técnico</h3>
+                <p class="mt-1 text-sm text-stone-500">Ingresa el correo al que deseas enviar nuevamente el informe.</p>
+
+                <div class="mt-4">
+                    <label class="mb-1 block text-xs font-medium text-stone-700">Correo destinatario</label>
+                    <input
+                        v-model="formReenviarInforme.correo"
+                        type="email"
+                        class="block w-full rounded-lg border-stone-300 text-sm py-2.5 focus:border-[#C8102E] focus:ring-red-100"
+                        placeholder="correo@empresa.com"
+                    />
+                    <p v-if="formReenviarInforme.errors.correo" class="mt-1 text-xs text-red-600">
+                        {{ formReenviarInforme.errors.correo }}
+                    </p>
+                </div>
+
+                <div class="mt-5 flex gap-3">
+                    <button
+                        @click="modalReenviarInforme = false"
+                        :class="buttonClass('neutral', 'md', 'flex-1')"
+                        :disabled="formReenviarInforme.processing">
+                        Cancelar
+                    </button>
+                    <button
+                        @click="reenviarInforme"
+                        :class="buttonClass('emerald', 'md', 'flex-1')"
+                        :disabled="formReenviarInforme.processing">
+                        {{ formReenviarInforme.processing ? 'Enviando...' : 'Reenviar' }}
+                    </button>
+                </div>
+            </div>
+        </div>
+
         <div v-if="modalCotizacion" class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-4">
             <div class="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
-                <h3 class="mb-2 text-base font-semibold text-gray-900">Enviar a cotización</h3>
-                <p class="mb-4 text-sm text-gray-500">
+                <h3 class="mb-2 text-base font-semibold text-stone-900">Enviar a cotización</h3>
+                <p class="mb-4 text-sm text-stone-500">
                     Se confirmarán los equipos y repuestos agregados. Después de esto, la visita quedará en espera de repuestos y ya no podrás editar, agregar o eliminar detalles.
                 </p>
                 <div v-if="mostrarAlertaCotizacion" class="mb-4 rounded-xl border border-red-200 bg-red-50 p-3">
@@ -2613,34 +3307,28 @@ const guardarBorrador = () => {
 
         <div v-if="modalInstalacion" class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-4">
             <div class="w-full max-w-lg rounded-2xl bg-white p-5 shadow-xl">
-                <h3 class="mb-4 text-base font-semibold text-gray-900">Confirmar instalación</h3>
+                <h3 class="mb-4 text-base font-semibold text-stone-900">Confirmar instalación</h3>
 
                 <!-- Repuesto -->
                 <div class="mb-4 rounded-lg bg-blue-50 border border-blue-200 p-4">
-                    <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-600">Repuesto a instalar</p>
+                    <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-stone-600">Repuesto a instalar</p>
                     <div class="flex items-start justify-between gap-2">
                         <div class="flex-1 min-w-0">
-                            <p class="text-sm font-semibold text-gray-900">{{ repuestoInstalacion?.id_cod_max }}</p>
-                            <p v-if="repuestosConDescripcion[repuestoInstalacion?.id_cod_max]?.descripcion" class="text-xs text-gray-600">{{ repuestosConDescripcion[repuestoInstalacion?.id_cod_max].descripcion }}</p>
-                            <p v-if="repuestosConDescripcion[repuestoInstalacion?.id_cod_max]?.codigo_proveedor" class="text-xs text-blue-600">Cod Comodidad: {{ repuestosConDescripcion[repuestoInstalacion?.id_cod_max].codigo_proveedor }}</p>
-                            <p class="text-xs text-gray-600 mt-1">Cantidad: {{ repuestoInstalacion?.cantidad }}</p>
-                            <p v-if="repuestoInstalacion?.observacion" class="text-xs text-gray-600">{{ repuestoInstalacion.observacion }}</p>
-                            <p v-if="repuestoInstalacion?.fecha" class="text-xs text-blue-600 mt-1">📅 {{ repuestoInstalacion.fecha }}</p>
-                            <span v-if="repuestoInstalacion?.estado" class="inline-flex mt-2 rounded-full px-2 py-0.5 text-xs font-medium"
-                                :class="estadoRepuestoColor(repuestoInstalacion.estado)">
-                                {{ repuestoInstalacion.estado }}
-                            </span>
+                            <p class="text-sm font-semibold text-stone-900">{{ repuestoInstalacion?.id_cod_max }}</p>
+                            <p v-if="repuestosConDescripcion[repuestoInstalacion?.id_cod_max]?.descripcion" class="text-xs text-stone-600">{{ repuestosConDescripcion[repuestoInstalacion?.id_cod_max].descripcion }}</p>
+                            <p v-if="repuestosConDescripcion[repuestoInstalacion?.id_cod_max]?.codigo_proveedor" class="text-xs text-stone-600">Cod Comodidad: {{ repuestosConDescripcion[repuestoInstalacion?.id_cod_max].codigo_proveedor }}</p>
+                            <p class="text-xs text-stone-600 mt-1">Cantidad: {{ repuestoInstalacion?.cantidad }}</p>
                         </div>
                     </div>
                 </div>
 
                 <!-- Evidencia Final -->
                 <div class="mb-4">
-                    <label class="block text-xs font-semibold text-gray-700 mb-2">Evidencia Final</label>
+                    <label class="block text-xs font-semibold text-stone-700 mb-2">Evidencia Final</label>
                     <!-- Fotos cargadas -->
                     <div v-if="fotosDespuesInstalacion.length > 0" class="grid grid-cols-3 gap-2 mb-3">
                         <div v-for="(foto, index) in fotosDespuesInstalacion" :key="index" class="relative group">
-                            <img :src="foto.url" class="w-full h-24 object-cover rounded-lg border border-gray-200 cursor-pointer hover:opacity-80" @click="fotoAmpliada = foto.url" />
+                            <img :src="foto.url" class="w-full h-24 object-cover rounded-lg border border-stone-200 cursor-pointer hover:opacity-80" @click="abrirFotoAmpliada(foto.url)" />
                             <button type="button"
                                 @click="eliminarFotoDespuesInstalacion(index)"
                                 :class="buttonClass('danger', 'xs', 'absolute top-1 right-1 hidden h-6 w-6 px-0 py-0 group-hover:flex shadow')">
@@ -2648,16 +3336,16 @@ const guardarBorrador = () => {
                             </button>
                         </div>
                     </div>
-                    <div v-else class="text-xs text-gray-500 py-1.5 text-center mb-2">
+                    <div v-else class="text-xs text-stone-500 py-1.5 text-center mb-2">
                         Sin evidencia final registrada
                     </div>
                     <!-- Subir fotos -->
                     <label for="inputFotosDespues"
-                        class="flex items-center justify-center gap-2 w-full rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 py-4 cursor-pointer transition hover:bg-gray-100">
-                        <svg class="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        class="flex items-center justify-center gap-2 w-full rounded-lg border-2 border-dashed border-stone-300 bg-stone-50 py-4 cursor-pointer transition hover:bg-stone-100">
+                        <svg class="h-5 w-5 text-stone-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
                         </svg>
-                        <span class="text-sm text-gray-600">Agregar evidencia</span>
+                        <span class="text-sm text-stone-600">Agregar evidencia</span>
                         <input id="inputFotosDespues" type="file" accept="image/*" multiple class="hidden" @change="agregarFotosDespuesInstalacion" />
                     </label>
                 </div>
@@ -2679,10 +3367,10 @@ const guardarBorrador = () => {
             <div class="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl">
                 <div class="mb-4">
                     <p class="text-xs font-semibold uppercase tracking-wide text-emerald-700">Soluciones complementarias</p>
-                    <h3 class="mt-1 text-lg font-semibold text-gray-900">
+                    <h3 class="mt-1 text-lg font-semibold text-stone-900">
                         {{ equiposConDescripcion[equipoSeleccionado?.id_cod_max]?.descripcion || equipoSeleccionado?.id_cod_max }}
                     </h3>
-                    <p class="mt-1 text-sm text-gray-600">Selecciona las soluciones aplicadas luego de la instalación de los repuestos.</p>
+                    <p class="mt-1 text-sm text-stone-600">Selecciona las soluciones aplicadas luego de la instalación de los repuestos.</p>
                 </div>
 
                 <div v-if="tiposSolucionComplementarios.length" class="rounded-xl border border-emerald-200 bg-emerald-50/60 p-3">
@@ -2694,25 +3382,25 @@ const guardarBorrador = () => {
                         >
                             <input
                                 type="checkbox"
-                                class="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                                class="h-4 w-4 rounded border-stone-300 text-emerald-600 focus:ring-emerald-500"
                                 :checked="solucionComplementariaSeleccionada(solucion.ID)"
                                 @change="toggleSolucionComplementaria(solucion.ID)"
                             />
                             <span
                                 class="text-sm"
-                                :class="solucionComplementariaSeleccionada(solucion.ID) ? 'font-semibold text-gray-900' : 'font-medium text-gray-700'"
+                                :class="solucionComplementariaSeleccionada(solucion.ID) ? 'font-semibold text-stone-900' : 'font-medium text-stone-700'"
                             >
                                 {{ solucion.TIPO_SOLUCION }}
                             </span>
                         </label>
                     </div>
 
-                    <p class="mt-2 text-[11px] text-gray-500">
+                    <p class="mt-2 text-[11px] text-stone-500">
                         {{ formInstalacion.soluciones_adicionales.length }} seleccionada<span v-if="formInstalacion.soluciones_adicionales.length !== 1">s</span>
                     </p>
                 </div>
 
-                <div v-else class="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
+                <div v-else class="rounded-xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-600">
                     Este equipo ya tiene todas las soluciones complementarias disponibles.
                 </div>
 
@@ -2736,9 +3424,24 @@ const guardarBorrador = () => {
 
         <!-- Visor foto ampliada -->
         <div v-if="fotoAmpliada"
-            class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
-            @click="fotoAmpliada = null">
-            <img :src="fotoAmpliada" class="max-w-full max-h-full rounded-xl shadow-2xl" />
+            class="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Vista ampliada de imagen"
+            @click.self="cerrarFotoAmpliada()">
+            <button
+                type="button"
+                class="absolute left-4 top-4 inline-flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm font-semibold text-slate-800 shadow-lg transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-white/70"
+                @click.stop="cerrarFotoAmpliada()"
+            >
+                <span class="text-lg leading-none">×</span>
+                Cerrar imagen
+            </button>
+            <img
+                :src="fotoAmpliada"
+                class="max-h-full max-w-full rounded-xl shadow-2xl"
+                @click.stop
+            />
         </div>
     </AppLayout>
 </template>

@@ -55,22 +55,12 @@ const visitaForm = ref({
 });
 
 const tecnicosAsociados = computed(() => props.technicalUsers || []);
-const tieneUnTecnico = computed(() => tecnicosAsociados.value.length === 1);
+const tieneTecnicosAsociados = computed(() => tecnicosAsociados.value.length > 0);
 const puedeEliminar = computed(() => page.props.auth?.user?.permissions?.includes('rutas-tecnicas.eliminar'));
 
 const puedeGuardar = computed(() => {
     return form.fecha_inicio && form.fecha_fin && form.visitas.length > 0;
 });
-
-const prepararTecnicoPorDefecto = () => {
-    if (tieneUnTecnico.value) {
-        const tecnico = tecnicosAsociados.value[0];
-        visitaForm.value.tecnico_user_id = tecnico.id;
-        visitaForm.value.tecnico_nombre = tecnico.name;
-        visitaForm.value.cod_tecnico = tecnico.codigo_vendedor;
-    }
-};
-
 // Verificar si el asesor actual puede usar "Taller Senco"
 const asesoresToaller = ['097', '070', '094'];
 const puedeUsarTaller = computed(() => {
@@ -130,9 +120,26 @@ const asignarTecnico = (tecnico) => {
         return;
     }
 
+    if (tecnico.id === 'yo-capacitacion') {
+        visitaForm.value.tecnico_user_id = 'yo-capacitacion';
+        visitaForm.value.tecnico_nombre = page.props.auth?.user?.name || 'Mi capacitación';
+        visitaForm.value.cod_tecnico = page.props.auth?.user?.codigo_vendedor || '';
+        return;
+    }
+
     visitaForm.value.tecnico_user_id = tecnico.id;
     visitaForm.value.tecnico_nombre = tecnico.name;
-    visitaForm.value.cod_tecnico = tecnico.codigo_vendedor;
+    visitaForm.value.cod_tecnico = tecnico.codigo_vendedor || '';
+};
+
+const seleccionarTecnicoPorId = (tecnicoId) => {
+    if (tecnicoId === 'yo-capacitacion') {
+        asignarTecnico({ id: 'yo-capacitacion' });
+        return;
+    }
+
+    const tecnico = tecnicosAsociados.value.find((row) => String(row.id) === String(tecnicoId));
+    asignarTecnico(tecnico);
 };
 
 const abrirModalEditar = (visita, index) => {
@@ -195,7 +202,6 @@ const resetearVisitaForm = () => {
         tecnico_nombre: '',
         cod_tecnico: '',
     };
-    prepararTecnicoPorDefecto();
 };
 
 const seleccionarCliente = (cliente) => {
@@ -284,7 +290,6 @@ const guardarRuta = () => {
 };
 
 onMounted(() => {
-    prepararTecnicoPorDefecto();
 });
 </script>
 
@@ -521,16 +526,39 @@ onMounted(() => {
 
                         <div class="mb-4">
                             <label class="block text-sm font-medium text-gray-700 mb-2">Técnico *</label>
+
+                            <div v-if="!tieneTecnicosAsociados" class="rounded-md bg-red-50 border border-red-200 p-3 text-sm text-red-700">
+                                No tienes técnicos asociados. Contacta a un administrador para asignar técnicos a tu usuario.
+                            </div>
+
                             <select
                                 v-model="visitaForm.tecnico_user_id"
-                                @change="asignarTecnico(tecnicosAsociados.find(t => t.id === visitaForm.tecnico_user_id))"
+                                @change="seleccionarTecnicoPorId(visitaForm.tecnico_user_id)"
                                 class="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
                             >
-                                <option value="">Seleccione un técnico</option>
-                                <option v-for="tecnico in tecnicosAsociados" :key="tecnico.id" :value="tecnico.id">
-                                    {{ tecnico.name }} ({{ tecnico.codigo_vendedor }})
+                                <option :value="null" disabled>Seleccione un técnico...</option>
+                                <option value="yo-capacitacion">
+                                    ✨ Yo (Mi capacitación) | Cod: {{ page.props.auth?.user?.codigo_vendedor || 'N/A' }}
+                                </option>
+                                <option disabled>─────────────────</option>
+                                <option
+                                    v-for="tecnico in tecnicosAsociados"
+                                    :key="tecnico.id"
+                                    :value="tecnico.id"
+                                >
+                                    {{ tecnico.name }} | Cod: {{ tecnico.codigo_vendedor || 'N/A' }}
                                 </option>
                             </select>
+
+                            <div v-if="tecnicoSeleccionadoActual" class="mt-3 rounded-md border border-indigo-200 bg-indigo-50 p-3">
+                                <div class="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-indigo-100 text-indigo-800">
+                                    Tecnico seleccionado
+                                </div>
+                                <div class="mt-2 text-sm text-indigo-900">
+                                    <strong>{{ tecnicoSeleccionadoActual.name }}</strong>
+                                    <span class="ml-2">Cod: {{ tecnicoSeleccionadoActual.codigo_vendedor || visitaForm.cod_tecnico || 'N/A' }}</span>
+                                </div>
+                            </div>
                         </div>
 
                         <div class="mb-4">

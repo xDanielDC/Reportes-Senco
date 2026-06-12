@@ -449,6 +449,10 @@ class RutaTecnicaController extends Controller
             } catch (\Exception $e) {
                 // Si el método no existe, permitir cualquier técnico
             }
+            if ($codVendedor) {
+                $allowedCodTecnicos[] = trim($codVendedor);
+                $allowedCodTecnicos = array_values(array_unique(array_filter($allowedCodTecnicos)));
+            }
             
             Log::info('Guardando ruta técnica', [
                 'numero_ruta' => $numeroRuta,
@@ -725,9 +729,12 @@ class RutaTecnicaController extends Controller
             $visitasExistentes = RutaTecnica::where('NumeroRuta', $numeroRuta)
                 ->get()
                 ->keyBy('IdVisita');
-            
             // Obtener técnicos permitidos
             $allowedCodTecnicos = $this->obtenerCodigosTecnicos($user);
+            if ($codVendedor) {
+                $allowedCodTecnicos[] = trim($codVendedor);
+                $allowedCodTecnicos = array_values(array_unique(array_filter($allowedCodTecnicos)));
+            }
             
             // Obtener datos de visitas del request
             $visitasData = $request->input('visitas', []);

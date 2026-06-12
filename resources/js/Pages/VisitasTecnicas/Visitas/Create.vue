@@ -1,6 +1,7 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { Head, useForm, router } from '@inertiajs/vue3'
+import axios from 'axios'
 import AppLayout from '@/Layouts/AppLayout.vue'
 
 const props = defineProps({
@@ -24,50 +25,130 @@ const form = useForm({
     fotos:            [],
 })
 
+const tipoEsCapacitacion = (tipo) => tipo?.TIPO_SERVICIO?.toLowerCase().includes('capacit')
+const tipoEsGarantia = (tipo) => {
+    const nombre = tipo?.TIPO_SERVICIO?.toLowerCase() || ''
+    return nombre.includes('garantí') || nombre.includes('garantia')
+}
+
+const esVisitaPropia = computed(() => Boolean(props.ruta_tecnica?.es_propia))
+const tipoCapacitacion = computed(() => props.tipos_servicio.find(tipoEsCapacitacion))
+const tiposServicioDisponibles = computed(() =>
+    esVisitaPropia.value
+        ? props.tipos_servicio.filter(tipoEsCapacitacion)
+        : props.tipos_servicio
+)
+
+watch(tipoCapacitacion, (tipo) => {
+    if (esVisitaPropia.value && tipo) {
+        form.id_tipo_servicio = tipo.ID
+    }
+}, { immediate: true })
+
 // Detectar si es capacitación
 const tipoSeleccionado = computed(() =>
     props.tipos_servicio.find(t => t.ID === form.id_tipo_servicio)
 )
-const esCapacitacion = computed(() =>
-    tipoSeleccionado.value
-        ? tipoSeleccionado.value.TIPO_SERVICIO.toLowerCase().includes('capacit')
-        : false
-)
+const esCapacitacion = computed(() => tipoEsCapacitacion(tipoSeleccionado.value))
 
 // Modal confirmación
 const modalConfirmar = ref(false)
+const modalInformeEnviado = ref(false)
+const enviandoCapacitacion = ref(false)
 
 // Canvas firma
 const canvasFirma = ref(null)
+const firmaDibujada = ref(false)
+const firmaCanvasAlto = 180
 let dibujando = false
 
-const iniciarFirma = (e) => {
-    dibujando = true
-    const ctx  = canvasFirma.value.getContext('2d')
-    const rect = canvasFirma.value.getBoundingClientRect()
-    const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left
-    const y = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top
-    ctx.beginPath()
-    ctx.moveTo(x, y)
+const configurarContextoFirma = (ctx) => {
+    ctx.lineWidth = 2.4
+    ctx.lineCap = 'round'
+    ctx.lineJoin = 'round'
+    ctx.strokeStyle = '#1e293b'
 }
+
+const prepararCanvasFirma = () => {
+    const canvas = canvasFirma.value
+    if (!canvas) return
+
+    const rect = canvas.getBoundingClientRect()
+    const ratio = window.devicePixelRatio || 1
+    const ancho = Math.max(Math.round(rect.width * ratio), 1)
+    const alto = Math.round(firmaCanvasAlto * ratio)
+
+    canvas.style.height = `${firmaCanvasAlto}px`
+
+    if (canvas.width !== ancho || canvas.height !== alto) {
+        canvas.width = ancho
+        canvas.height = alto
+    }
+
+    const ctx = canvas.getContext('2d')
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0)
+    configurarContextoFirma(ctx)
+}
+
+const puntoFirma = (e) => {
+    const rect = canvasFirma.value.getBoundingClientRect()
+    return {
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top,
+    }
+}
+
+const iniciarFirma = (e) => {
+    if (e.button !== undefined && e.button !== 0) return
+
+    e.preventDefault()
+    prepararCanvasFirma()
+    dibujando = true
+    e.currentTarget?.setPointerCapture?.(e.pointerId)
+
+    const ctx = canvasFirma.value.getContext('2d')
+    const punto = puntoFirma(e)
+    ctx.beginPath()
+    ctx.moveTo(punto.x, punto.y)
+}
+
 const dibujarFirma = (e) => {
     if (!dibujando) return
+
     e.preventDefault()
-    const ctx  = canvasFirma.value.getContext('2d')
-    const rect = canvasFirma.value.getBoundingClientRect()
-    const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left
-    const y = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top
-    ctx.lineWidth   = 2
-    ctx.lineCap     = 'round'
-    ctx.strokeStyle = '#1e293b'
-    ctx.lineTo(x, y)
+    const ctx = canvasFirma.value.getContext('2d')
+    const punto = puntoFirma(e)
+    ctx.lineTo(punto.x, punto.y)
     ctx.stroke()
+    firmaDibujada.value = true
 }
-const terminarFirma = () => { dibujando = false }
-const limpiarFirma  = () => {
-    const c = canvasFirma.value
-    c.getContext('2d').clearRect(0, 0, c.width, c.height)
+
+const terminarFirma = (e) => {
+    if (!dibujando) return
+
+    dibujando = false
+    e?.currentTarget?.releasePointerCapture?.(e.pointerId)
 }
+
+const limpiarFirma = () => {
+    const canvas = canvasFirma.value
+    if (!canvas) return
+
+    const ctx = canvas.getContext('2d')
+    ctx.save()
+    ctx.setTransform(1, 0, 0, 1, 0, 0)
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+    ctx.restore()
+    configurarContextoFirma(ctx)
+    firmaDibujada.value = false
+}
+
+watch(modalConfirmar, (abierto) => {
+    if (abierto) nextTick(prepararCanvasFirma)
+})
+
+onMounted(() => window.addEventListener('resize', prepararCanvasFirma))
+onUnmounted(() => window.removeEventListener('resize', prepararCanvasFirma))
 
 // Fotos
 const fotosPreview = ref([])
@@ -91,28 +172,82 @@ const submitNormal = () => {
     form.post(route('visitastecnicas.visitas.store'))
 }
 
+const emailValido = (email) => !email || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+
+const abrirModalConfirmar = () => {
+    form.clearErrors()
+
+    const errores = { }
+
+    if (!form.id_tipo_servicio) errores.id_tipo_servicio = 'El tipo de servicio es obligatorio.'
+    if (!form.titulo) errores.titulo = 'El título de la capacitación es obligatorio.'
+    if (!form.fecha_inicio) errores.fecha_inicio = 'La fecha de inicio es obligatoria.'
+    if (!form.fecha_fin) errores.fecha_fin = 'La fecha fin es obligatoria.'
+    if (form.fecha_inicio && form.fecha_fin && form.fecha_fin < form.fecha_inicio) {
+        errores.fecha_fin = 'La fecha fin debe ser igual o posterior a la fecha de inicio.'
+    }
+    if (!form.hora_inicio) errores.hora_inicio = 'La hora de inicio es obligatoria.'
+    if (!form.hora_fin) errores.hora_fin = 'La hora fin es obligatoria.'
+    if (!emailValido(form.correo_cliente)) {
+        errores.correo_cliente = 'El correo para informe técnico debe ser una dirección válida.'
+    }
+
+    if (Object.keys(errores).length) {
+        Object.entries(errores).forEach(([campo, mensaje]) => form.setError(campo, mensaje))
+        setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 0)
+        return
+    }
+
+    modalConfirmar.value = true
+}
+
 // Submit capacitación — todo en uno
-const submitCapacitacion = () => {
-    if (!form.titulo) return
+const submitCapacitacion = async () => {
+    form.clearErrors()
+    enviandoCapacitacion.value = true
 
     const data = new FormData()
-    data.append('id_visita',        form.id_visita)
+    data.append('id_visita', form.id_visita)
     data.append('id_tipo_servicio', form.id_tipo_servicio)
-    data.append('correo_cliente',   form.correo_cliente)
-    data.append('fecha_inicio',     form.fecha_inicio)
-    data.append('fecha_fin',        form.fecha_fin)
-    data.append('hora_inicio',      form.hora_inicio)
-    data.append('hora_fin',         form.hora_fin)
-    data.append('titulo',           form.titulo)
-    data.append('temas',            form.temas)
-    data.append('firma',            canvasFirma.value.toDataURL('image/png'))
-    data.append('observaciones',    form.observaciones)
-    data.append('es_capacitacion',  '1')
-    fotosPreview.value.forEach(f => data.append('fotos[]', f.file))
+    data.append('correo_cliente', form.correo_cliente || '')
+    data.append('fecha_inicio', form.fecha_inicio)
+    data.append('fecha_fin', form.fecha_fin)
+    data.append('hora_inicio', form.hora_inicio)
+    data.append('hora_fin', form.hora_fin)
+    data.append('titulo', form.titulo)
+    data.append('temas', form.temas || '')
+    data.append('observaciones', form.observaciones || '')
+    data.append('es_capacitacion', '1')
+    data.append('firma', firmaDibujada.value && canvasFirma.value ? canvasFirma.value.toDataURL('image/png') : '')
+    form.fotos.forEach((foto) => data.append('fotos[]', foto))
 
-    router.post(route('visitastecnicas.visitas.store'), data, {
-        forceFormData: true,
-    })
+    try {
+        await axios.post(route('visitastecnicas.visitas.store'), data, {
+            headers: {
+                Accept: 'application/json',
+                'Content-Type': 'multipart/form-data',
+            },
+        })
+
+        modalConfirmar.value = false
+        modalInformeEnviado.value = true
+    } catch (error) {
+        if (error.response?.status === 422 && error.response.data?.errors) {
+            Object.entries(error.response.data.errors).forEach(([key, messages]) => {
+                form.setError(key, Array.isArray(messages) ? messages[0] : messages)
+            })
+            return
+        }
+
+        alert(error.response?.data?.message || 'No fue posible finalizar la capacitación.')
+    } finally {
+        enviandoCapacitacion.value = false
+    }
+}
+
+const cerrarModalInformeEnviado = () => {
+    modalInformeEnviado.value = false
+    router.visit(route('visitastecnicas.visitas.index'))
 }
 
 const puedeFinalizarCapacitacion = computed(() =>
@@ -120,8 +255,11 @@ const puedeFinalizarCapacitacion = computed(() =>
     form.titulo &&
     form.fecha_inicio &&
     form.fecha_fin &&
-    form.hora_inicio
+    form.hora_inicio &&
+    form.hora_fin
 )
+
+const erroresFormulario = computed(() => Object.values(form.errors).filter(Boolean))
 </script>
 
 <template>
@@ -136,6 +274,13 @@ const puedeFinalizarCapacitacion = computed(() =>
 
         <div class="py-4 sm:py-8">
             <div class="mx-auto max-w-2xl px-3 sm:px-6 lg:px-8 space-y-4">
+
+                <div v-if="erroresFormulario.length" class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    <p class="font-semibold">Revisa los campos del formulario:</p>
+                    <ul class="mt-1 list-disc pl-5">
+                        <li v-for="(error, index) in erroresFormulario" :key="index">{{ error }}</li>
+                    </ul>
+                </div>
 
                 <!-- Info cliente -->
                 <div class="overflow-hidden rounded-xl bg-white shadow-sm border border-gray-100">
@@ -183,10 +328,10 @@ const puedeFinalizarCapacitacion = computed(() =>
                         <select v-model="form.id_tipo_servicio"
                             class="block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm py-2.5">
                             <option value="" disabled>Seleccione un tipo</option>
-                            <option v-for="tipo in tipos_servicio" :key="tipo.ID" :value="tipo.ID"
-                                :disabled="tipo.TIPO_SERVICIO.toLowerCase().includes('garantí') || tipo.TIPO_SERVICIO.toLowerCase().includes('garantia')">
+                            <option v-for="tipo in tiposServicioDisponibles" :key="tipo.ID" :value="tipo.ID"
+                                :disabled="tipoEsGarantia(tipo)">
                                 {{ tipo.TIPO_SERVICIO }}
-                                {{ (tipo.TIPO_SERVICIO.toLowerCase().includes('garantí') || tipo.TIPO_SERVICIO.toLowerCase().includes('garantia')) ? '(No disponible)' : '' }}
+                                {{ tipoEsGarantia(tipo) ? '(No disponible)' : '' }}
                             </option>
                         </select>
                         <p v-if="form.errors.id_tipo_servicio" class="mt-1 text-xs text-red-600">
@@ -218,6 +363,9 @@ const puedeFinalizarCapacitacion = computed(() =>
                             <input type="text" v-model="form.titulo"
                                 placeholder="Ej: Introducción al nuevo producto XYZ"
                                 class="block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm py-2.5" />
+                            <p v-if="form.errors.titulo" class="mt-1 text-xs text-red-600">
+                                {{ form.errors.titulo }}
+                            </p>
                         </div>
 
                         <!-- Temas tratados -->
@@ -228,6 +376,9 @@ const puedeFinalizarCapacitacion = computed(() =>
                             <textarea v-model="form.temas" rows="4"
                                 placeholder="Describe los temas tratados en la capacitación..."
                                 class="block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm" />
+                            <p v-if="form.errors.temas" class="mt-1 text-xs text-red-600">
+                                {{ form.errors.temas }}
+                            </p>
                         </div>
 
                         <!-- Fotos -->
@@ -250,6 +401,9 @@ const puedeFinalizarCapacitacion = computed(() =>
                                 <span class="text-sm text-gray-400">Agregar fotos</span>
                                 <input type="file" accept="image/*" multiple class="hidden" @change="agregarFotos" />
                             </label>
+                            <p v-if="form.errors.fotos" class="mt-1 text-xs text-red-600">
+                                {{ form.errors.fotos }}
+                            </p>
                         </div>
 
                         <!-- Fechas y horas (al final en capacitación) -->
@@ -304,8 +458,8 @@ const puedeFinalizarCapacitacion = computed(() =>
                                 Cancelar
                             </a>
                             <button type="button"
-                                @click="modalConfirmar = true"
-                                :disabled="!puedeFinalizarCapacitacion || form.processing"
+                                @click="abrirModalConfirmar"
+                                :disabled="enviandoCapacitacion"
                                 class="flex-1 inline-flex items-center justify-center rounded-lg bg-green-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50 transition">
                                 Finalizar visita
                             </button>
@@ -339,6 +493,21 @@ const puedeFinalizarCapacitacion = computed(() =>
             </div>
         </div>
 
+        <div v-if="modalInformeEnviado" class="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4 sm:items-center">
+            <div class="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl">
+                <h3 class="text-base font-semibold text-stone-900">Informe enviado exitosamente</h3>
+                <p class="mt-1 text-sm text-stone-500">El informe técnico fue enviado al correo diligenciado.</p>
+                <div class="mt-5">
+                    <button
+                        @click="cerrarModalInformeEnviado"
+                        class="w-full rounded-xl bg-[#3b82f6] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#265aad]"
+                    >
+                        Entendido
+                    </button>
+                </div>
+            </div>
+        </div>
+
         <!-- Modal confirmación finalizar capacitación -->
         <div v-if="modalConfirmar"
             class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-4">
@@ -347,6 +516,12 @@ const puedeFinalizarCapacitacion = computed(() =>
                 <p class="mb-4 text-xs text-gray-500">
                     {{ ruta_tecnica.cliente }} — {{ ruta_tecnica.numero_ruta }}
                 </p>
+                <div v-if="erroresFormulario.length" class="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                    <p class="font-semibold">No fue posible finalizar todavía:</p>
+                    <ul class="mt-1 list-disc pl-4">
+                        <li v-for="(error, index) in erroresFormulario" :key="index">{{ error }}</li>
+                    </ul>
+                </div>
                 <!-- Observaciones finales -->
                 <div class="mb-4">
                     <label class="block text-sm font-medium text-gray-700 mb-1">
@@ -355,25 +530,32 @@ const puedeFinalizarCapacitacion = computed(() =>
                     <textarea v-model="form.observaciones" rows="3"
                         placeholder="Observaciones al finalizar la capacitación..."
                         class="block w-full rounded-lg border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500" />
+                    <p v-if="form.errors.observaciones" class="mt-1 text-xs text-red-600">
+                        {{ form.errors.observaciones }}
+                    </p>
                 </div>
                 <!-- Firma -->
                 <div class="mb-4">
                     <div class="flex items-center justify-between mb-1">
                         <label class="block text-sm font-medium text-gray-700">
-                            Firma del cliente <span class="text-red-500">*</span>
+                            Firma del cliente
                         </label>
                         <button type="button" @click="limpiarFirma"
                             class="text-xs text-gray-400 hover:text-gray-600 underline">
                             Limpiar
                         </button>
                     </div>
-                    <canvas ref="canvasFirma" width="600" height="150"
-                        class="w-full rounded-lg border-2 border-dashed border-gray-200 bg-gray-50 touch-none cursor-crosshair"
-                        @mousedown="iniciarFirma" @mousemove="dibujarFirma"
-                        @mouseup="terminarFirma" @mouseleave="terminarFirma"
-                        @touchstart.prevent="iniciarFirma" @touchmove.prevent="dibujarFirma"
-                        @touchend="terminarFirma" />
-                    <p class="mt-1 text-xs text-gray-400">Firme en el recuadro</p>
+                    <canvas ref="canvasFirma"
+                        class="block w-full rounded-lg border border-gray-300 bg-white shadow-inner touch-none cursor-crosshair"
+                        @pointerdown="iniciarFirma"
+                        @pointermove="dibujarFirma"
+                        @pointerup="terminarFirma"
+                        @pointercancel="terminarFirma"
+                        @pointerleave="terminarFirma" />
+                    <p class="mt-1 text-xs text-gray-400">Firma opcional</p>
+                    <p v-if="form.errors.firma" class="mt-1 text-xs text-red-600">
+                        {{ form.errors.firma }}
+                    </p>
                 </div>
                 <div class="flex gap-3">
                     <button type="button" @click="modalConfirmar = false"
@@ -382,13 +564,16 @@ const puedeFinalizarCapacitacion = computed(() =>
                     </button>
                     <button type="button"
                         @click="submitCapacitacion"
-                        :disabled="form.processing"
-                        class="flex-1 rounded-xl bg-green-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50">
-                        <svg v-if="form.processing" class="inline mr-2 h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
-                        </svg>
-                        Confirmar y finalizar
+                        :disabled="enviandoCapacitacion"
+                        class="flex-1 rounded-xl bg-green-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50">
+                        <span v-if="enviandoCapacitacion" class="inline-flex items-center justify-center gap-2">
+                            <svg class="h-4 w-4 animate-spin text-white" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                            </svg>
+                            Procesando...
+                        </span>
+                        <span v-else>Confirmar y finalizar</span>
                     </button>
                 </div>
             </div>

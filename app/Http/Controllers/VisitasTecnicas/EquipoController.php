@@ -62,7 +62,10 @@ class EquipoController extends Controller
             'id_cod_max'       => 'required|string|max:100',
             'titulo'           => 'nullable|string|max:200',
             'serial'           => 'required|string|max:100',
-            'descripcion_falla'=> 'required|string|max:500',
+            'id_tipo_mant'     => 'required|integer|exists:senco360.RT_tipo_mant,ID',
+            'id_tipo_falla'    => 'nullable|array',
+            'id_tipo_falla.*'  => 'integer|exists:senco360.RT_tipo_falla,ID',
+            'descripcion_falla'=> 'required_without:id_tipo_falla|nullable|string|max:500',
             'id_solucion'      => 'required|array|min:1',
             'id_solucion.*'    => 'required|integer|exists:senco360.RT_tipo_solucion,ID',
             'observaciones'    => 'nullable|string|max:1000',
@@ -83,6 +86,12 @@ class EquipoController extends Controller
             ->map(fn ($id) => (int) $id)
             ->unique()
             ->values();
+        $fallas = collect($request->input('id_tipo_falla', []))
+            ->filter(fn ($id) => filled($id))
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+
         $serial = filled($request->serial)
             ? trim((string) $request->serial)
             : null;
@@ -93,15 +102,17 @@ class EquipoController extends Controller
                 'cantidad'    => (int) $repuesto['cantidad'],
                 'observacion' => $repuesto['observacion'] ?? null,
                 'resolver_en_campo' => (bool) ($repuesto['resolver_en_campo'] ?? false),
+                'es_urgente' => (bool) ($repuesto['es_urgente'] ?? false),
             ])
             ->values();
 
-        DB::connection('senco360')->transaction(function () use ($request, $soluciones, $serial, $repuestos) {
+        DB::connection('senco360')->transaction(function () use ($request, $soluciones, $fallas, $serial, $repuestos) {
             $equipo = VisitaDetal::create([
                 'ID_ENC_VISITA'    => $request->visita_id,
                 'ID_COD_MAX'       => $request->id_cod_max,
                 'TITULO'           => $request->titulo,
                 'SERIAL'           => $serial,
+                'ID_TIPO_MANT'     => $request->id_tipo_mant,
                 'DESCRIPCION_FALLA'=> $request->descripcion_falla,
                 // Mantiene compatibilidad con integraciones que lean una sola solución.
                 'ID_SOLUCION'      => $soluciones->first(),
@@ -109,6 +120,19 @@ class EquipoController extends Controller
             ]);
 
             $equipo->tiposSolucion()->sync($soluciones->all());
+
+            // Sincronizar fallas con datos adicionales (DESCRIPCION_OTROS)
+            $descripcionOtros = $request->input('descripcion_otros');
+            $fallasConPivot = $fallas->mapWithKeys(function ($fallaId) use ($descripcionOtros) {
+                return [
+                    $fallaId => [
+                        'DESCRIPCION_OTROS' => (int) $fallaId === 34 && filled($descripcionOtros)
+                            ? trim($descripcionOtros)
+                            : null,
+                    ],
+                ];
+            })->all();
+            $equipo->tiposFalla()->sync($fallasConPivot);
 
             // Guardar evidencia inicial si existe
             if ($request->hasFile('fotos_antes')) {
@@ -132,6 +156,7 @@ class EquipoController extends Controller
                     'CANTIDAD'          => $repuesto['cantidad'],
                     'ID_ESTADO'         => $repuesto['resolver_en_campo'] ? 19 : 13,
                     'OBSERVACION'       => $repuesto['observacion'],
+                    'ES_URGENTE'        => $repuesto['es_urgente'],
                 ]);
             }
         });
@@ -145,7 +170,10 @@ class EquipoController extends Controller
             'id_cod_max'       => 'required|string|max:100',
             'titulo'           => 'nullable|string|max:200',
             'serial'           => 'required|string|max:100',
-            'descripcion_falla'=> 'required|string|max:500',
+            'id_tipo_mant'     => 'required|integer|exists:senco360.RT_tipo_mant,ID',
+            'id_tipo_falla'    => 'nullable|array',
+            'id_tipo_falla.*'  => 'integer|exists:senco360.RT_tipo_falla,ID',
+            'descripcion_falla'=> 'required_without:id_tipo_falla|nullable|string|max:500',
             'id_solucion'      => 'required|array|min:1',
             'id_solucion.*'    => 'required|integer|exists:senco360.RT_tipo_solucion,ID',
             'observaciones'    => 'nullable|string|max:1000',
@@ -158,18 +186,37 @@ class EquipoController extends Controller
             ->map(fn ($value) => (int) $value)
             ->unique()
             ->values();
+        $fallas = collect($request->input('id_tipo_falla', []))
+            ->filter(fn ($value) => filled($value))
+            ->map(fn ($value) => (int) $value)
+            ->unique()
+            ->values();
 
-        DB::connection('senco360')->transaction(function () use ($request, $equipo, $soluciones) {
+        DB::connection('senco360')->transaction(function () use ($request, $equipo, $soluciones, $fallas) {
             $equipo->update([
                 'ID_COD_MAX'       => $request->id_cod_max,
                 'TITULO'           => $request->titulo,
                 'SERIAL'           => $request->serial,
+                'ID_TIPO_MANT'     => $request->id_tipo_mant,
                 'DESCRIPCION_FALLA'=> $request->descripcion_falla,
                 'ID_SOLUCION'      => $soluciones->first(),
                 'OBSERVACIONES'    => $request->observaciones,
             ]);
 
             $equipo->tiposSolucion()->sync($soluciones->all());
+
+            // Sincronizar fallas con datos adicionales (DESCRIPCION_OTROS)
+            $descripcionOtros = $request->input('descripcion_otros');
+            $fallasConPivot = $fallas->mapWithKeys(function ($fallaId) use ($descripcionOtros) {
+                return [
+                    $fallaId => [
+                        'DESCRIPCION_OTROS' => (int) $fallaId === 34 && filled($descripcionOtros)
+                            ? trim($descripcionOtros)
+                            : null,
+                    ],
+                ];
+            })->all();
+            $equipo->tiposFalla()->sync($fallasConPivot);
         });
 
         return back()->with('success', 'Equipo actualizado correctamente.');
@@ -183,6 +230,7 @@ class EquipoController extends Controller
         // Eliminar repuestos relacionados antes de eliminar el equipo
         $equipo->solicitudesPartes()->delete();
         $equipo->tiposSolucion()->detach();
+        $equipo->tiposFalla()->detach();
         $equipo->delete();
         foreach ($equipo->fotos as $foto) {
         \Illuminate\Support\Facades\Storage::disk('public')->delete($foto->RUTA_FOTO);

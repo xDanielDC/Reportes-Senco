@@ -238,6 +238,10 @@ Route::middleware(['auth:sanctum', config('jetstream.auth_session'), 'verified']
         ->name('visitas.guardar-borrador');
     Route::post('/visitas/{id}/finalizar', [\App\Http\Controllers\VisitasTecnicas\VisitaController::class, 'finalizar'])
         ->name('visitas.finalizar');
+    Route::get('/visitas/{id}/informe-tecnico', [\App\Http\Controllers\VisitasTecnicas\VisitaController::class, 'descargarInforme'])
+        ->name('visitas.informe-tecnico.descargar');
+    Route::post('/visitas/{id}/informe-tecnico/reenviar', [\App\Http\Controllers\VisitasTecnicas\VisitaController::class, 'reenviarInforme'])
+        ->name('visitas.informe-tecnico.reenviar');
     Route::post('/visitas/{id}/solicitar-cotizacion', [\App\Http\Controllers\VisitasTecnicas\VisitaController::class, 'solicitarCotizacion'])
         ->name('visitas.solicitar-cotizacion');
     Route::post('/visitas/{id}/reprogramar', [\App\Http\Controllers\VisitasTecnicas\VisitaController::class, 'reprogramar'])
@@ -282,4 +286,20 @@ Route::middleware(['auth:sanctum', config('jetstream.auth_session'), 'verified']
         ->name('fotos.destroy');
     Route::post('/visitas/reprogramar-ruta/{id_visita}', [\App\Http\Controllers\VisitasTecnicas\VisitaController::class, 'reprogramarRuta'])
     ->name('visitas.reprogramar-ruta');
+
+    // Módulo de Capacitaciones para Asesores
+    Route::prefix('capacitaciones')->name('capacitaciones.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\VisitasTecnicas\CapacitacionAsesorController::class, 'index'])
+            ->name('index');
+        Route::get('/{id_visita}', [\App\Http\Controllers\VisitasTecnicas\CapacitacionAsesorController::class, 'show'])
+            ->name('show');
+        Route::get('/{id_visita}/edit', [\App\Http\Controllers\VisitasTecnicas\CapacitacionAsesorController::class, 'edit'])
+            ->name('edit');
+        Route::post('/{id_visita}', [\App\Http\Controllers\VisitasTecnicas\CapacitacionAsesorController::class, 'update'])
+            ->name('update');
+        Route::post('/{id_visita}/finalizar', [\App\Http\Controllers\VisitasTecnicas\CapacitacionAsesorController::class, 'finalizar'])
+            ->name('finalizar');
+        Route::delete('/{id_visita}', [\App\Http\Controllers\VisitasTecnicas\CapacitacionAsesorController::class, 'destroy'])
+            ->name('destroy');
+    });
 });

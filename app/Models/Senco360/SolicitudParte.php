@@ -12,7 +12,7 @@ class SolicitudParte extends Model
 
     protected $fillable = [
         'ID_DETALLE_VISITA', 'ID_COD_MAX_PARTES',
-        'CANTIDAD', 'ID_ESTADO', 'OBSERVACION',
+        'CANTIDAD', 'ID_ESTADO', 'OBSERVACION', 'ES_URGENTE',
     ];
 
     public function detalle()
