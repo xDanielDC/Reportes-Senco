@@ -15,6 +15,7 @@ class VisitaRepository
     public function listarRutasCerradas(string $codigoTecnico = ''): Collection
     {
         $query = RutaTecnica::where('cerrada', 1)
+            ->where('invalido', 0)
             ->with(['visitaEncab', 'visitaEncab.estadoActual', 'visitaEncab.tipoServicio']);
 
         if (!empty($codigoTecnico)) {

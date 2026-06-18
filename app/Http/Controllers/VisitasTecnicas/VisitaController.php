@@ -173,6 +173,7 @@ class VisitaController extends Controller
 
         $query = RutaTecnica::query()
             ->where('cerrada', 1)
+            ->where('invalido', 0)
             ->with('visitaEncab.estadoActual', 'visitaEncab.tipoServicio');
 
         if ($codigoTecnico) {
@@ -228,6 +229,7 @@ class VisitaController extends Controller
                 'estado' => $estadoFiltro,
             ],
             'estados_visita' => VisitaEstado::where('descripcion', 'Visita')
+                ->where('ID', '!=', 28)
                 ->get(['ID', 'ESTADO']),
         ]);
     }

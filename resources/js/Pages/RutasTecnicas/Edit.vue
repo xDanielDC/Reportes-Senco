@@ -538,9 +538,8 @@ onMounted(() => {
                             >
                                 <option :value="null" disabled>Seleccione un técnico...</option>
                                 <option value="yo-capacitacion">
-                                    ✨ Yo (Mi capacitación) | Cod: {{ page.props.auth?.user?.codigo_vendedor || 'N/A' }}
+                                    Yo (capacitación) | Cod: {{ page.props.auth?.user?.codigo_vendedor || 'N/A' }}
                                 </option>
-                                <option disabled>─────────────────</option>
                                 <option
                                     v-for="tecnico in tecnicosAsociados"
                                     :key="tecnico.id"

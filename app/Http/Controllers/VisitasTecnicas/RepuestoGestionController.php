@@ -68,7 +68,7 @@ class RepuestoGestionController extends Controller
 
     private function obtenerTransicionesPorRol($user): array
     {
-        if ($user->hasRole('Asesor')) {
+        if ($user->hasAnyRole(['Asesor', 'AsesorPruebas'])) {
             return self::TRANSICIONES_ASESOR;
         }
 
@@ -437,7 +437,7 @@ class RepuestoGestionController extends Controller
     public function index(): Response
     {
         $user = auth()->user();
-        $esAsesor    = $user->hasRole('Asesor');
+        $esAsesor    = $user->hasAnyRole(['Asesor', 'AsesorPruebas']);
         $esAsistente = $user->hasRole('AsistenteVentas');
         $estadosGestionables = $this->obtenerEstadosGestionablesPorRol($user);
 

@@ -25,7 +25,7 @@
     <div class="wrapper">
         <div class="hero">
             <p class="eyebrow">Informe técnico</p>
-            <h1>Informe de capacitación - Visíta técnica #{{ $visita->ID ?? 'N/A' }}</h1>
+            <h1>Informe de capacitación - Visita técnica #{{ $visita->ID ?? 'N/A' }}</h1>
         </div>
         <div class="card">
             <p>Hola <b>{{ $visita->rutaTecnica->NombreCliente ?? '—' }}</b>, adjuntamos el informe técnico generado al finalizar la capacitación.</p>

@@ -149,7 +149,6 @@
                                         <th>Descripción</th>
                                         <th>Cód. Max</th>
                                         <th>Cantidad</th>
-                                        <th>Urgente</th>
                                         <th>Estado</th>
                                     </tr>
                                 </thead>
@@ -159,7 +158,6 @@
                                             <td>{{ $repuesto['descripcion'] }}</td>
                                             <td>{{ $repuesto['codigo_max'] }}</td>
                                             <td>{{ $repuesto['cantidad'] }}</td>
-                                            <td>{{ $repuesto['es_urgente'] ? '⚡ SÍ' : 'No' }}</td>
                                             <td>{{ $repuesto['estado'] }}</td>
                                         </tr>
                                     @endforeach

@@ -30,13 +30,17 @@ const tipoEsGarantia = (tipo) => {
     const nombre = tipo?.TIPO_SERVICIO?.toLowerCase() || ''
     return nombre.includes('garantí') || nombre.includes('garantia')
 }
+const ordenarTiposServicio = (tipos) => [
+    ...tipos.filter((tipo) => !tipoEsGarantia(tipo)),
+    ...tipos.filter(tipoEsGarantia),
+]
 
 const esVisitaPropia = computed(() => Boolean(props.ruta_tecnica?.es_propia))
 const tipoCapacitacion = computed(() => props.tipos_servicio.find(tipoEsCapacitacion))
 const tiposServicioDisponibles = computed(() =>
     esVisitaPropia.value
-        ? props.tipos_servicio.filter(tipoEsCapacitacion)
-        : props.tipos_servicio
+        ? ordenarTiposServicio(props.tipos_servicio.filter(tipoEsCapacitacion))
+        : ordenarTiposServicio(props.tipos_servicio)
 )
 
 watch(tipoCapacitacion, (tipo) => {

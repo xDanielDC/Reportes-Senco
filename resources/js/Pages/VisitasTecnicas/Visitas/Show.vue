@@ -1182,6 +1182,13 @@ const agregarRepuestoTemporal = () => {
         return
     }
 
+    if (formRepuesto.resolver_en_campo && !String(formRepuesto.observacion || '').trim()) {
+        formRepuesto.setError('observacion', 'La observación es obligatoria cuando se marca como resuelto en campo.')
+        return
+    }
+
+    formRepuesto.clearErrors(['cantidad', 'observacion'])
+
     const repuestoTemporalPayload = {
         id_cod_max: formRepuesto.id_cod_max,
         cantidad,
@@ -1219,7 +1226,7 @@ const limpiarFormularioRepuestoTemporal = () => {
     repuestoSeleccionado.value = null
     limpiarBusquedaRepuestos()
     resetearFormularioRepuesto()
-    formRepuesto.clearErrors('cantidad')
+    formRepuesto.clearErrors(['cantidad', 'observacion'])
 }
 
 const editarRepuestoTemporal = async (index) => {
@@ -1239,7 +1246,8 @@ const editarRepuestoTemporal = async (index) => {
     formRepuesto.cantidad = repuesto.cantidad
     formRepuesto.observacion = repuesto.observacion ?? ''
     formRepuesto.resolver_en_campo = !!repuesto.resolver_en_campo
-    formRepuesto.clearErrors('cantidad')
+    formRepuesto.es_urgente = !!repuesto.es_urgente
+    formRepuesto.clearErrors(['cantidad', 'observacion'])
 
     await nextTick()
     repuestoEditorRef.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -1370,6 +1378,19 @@ const seleccionarRepuesto = (item) => {
     repuestosBusqueda.value = item.descripcion
     repuestosResultados.value = []
     repuestosBuscada.value = false
+}
+
+const activarResueltoEnCampo = () => {
+    if (formRepuesto.resolver_en_campo) {
+        formRepuesto.es_urgente = false
+    }
+}
+
+const activarUrgente = () => {
+    if (formRepuesto.es_urgente) {
+        formRepuesto.resolver_en_campo = false
+        formRepuesto.clearErrors('observacion')
+    }
 }
 
 const formatearInventario = (inventario) => {
@@ -2859,18 +2880,15 @@ const guardarBorrador = () => {
                                             {{ formRepuesto.errors.cantidad }}
                                         </p>
                                     </div>
-                                    <div>
-                                        <label class="mb-1.5 block text-xs font-medium text-slate-700">Observacion (opcional)</label>
-                                            <textarea v-model="formRepuesto.observacion" rows="1" placeholder="Nota adicional..."
-                                            class="block w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-800 focus:border-[#C8102E] focus:ring-4 focus:ring-red-100"></textarea>
-                                    </div>
                                 </div>
 
                                 <label class="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-900">
                                     <input
                                         v-model="formRepuesto.resolver_en_campo"
+                                        @change="activarResueltoEnCampo"
+                                        :disabled="formRepuesto.es_urgente"
                                         type="checkbox"
-                                        class="mt-0.5 h-4 w-4 rounded border-emerald-300 text-emerald-600 focus:ring-emerald-500"
+                                        class="mt-0.5 h-4 w-4 rounded border-emerald-300 text-emerald-600 focus:ring-emerald-500 disabled:cursor-not-allowed disabled:bg-emerald-100"
                                     />
                                     <span>
                                         Marcar como resuelto en campo.
@@ -2881,8 +2899,10 @@ const guardarBorrador = () => {
                                 <label class="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-900">
                                     <input
                                         v-model="formRepuesto.es_urgente"
+                                        @change="activarUrgente"
+                                        :disabled="formRepuesto.resolver_en_campo"
                                         type="checkbox"
-                                        class="mt-0.5 h-4 w-4 rounded border-red-300 text-red-600 focus:ring-red-500"
+                                        class="mt-0.5 h-4 w-4 rounded border-red-300 text-red-600 focus:ring-red-500 disabled:cursor-not-allowed disabled:bg-red-100"
                                     />
                                     <span>
                                         Marcar como urgente.
@@ -2890,8 +2910,21 @@ const guardarBorrador = () => {
                                     </span>
                                 </label>
 
-                                <button @click="agregarRepuestoTemporal" :disabled="!repuestoSeleccionado || Number(formRepuesto.cantidad) <= 0"
-                                    :class="buttonClass('primary', 'lg', 'w-full')">
+                                <div>
+                                    <label class="mb-1.5 block text-xs font-medium text-slate-700">
+                                        Observacion
+                                        <span v-if="formRepuesto.resolver_en_campo" class="text-red-500">*</span>
+                                        <span v-else>(opcional)</span>
+                                    </label>
+                                    <textarea v-model="formRepuesto.observacion" rows="1" placeholder="Nota adicional..."
+                                        class="block w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-800 focus:border-[#C8102E] focus:ring-4 focus:ring-red-100"></textarea>
+                                    <p v-if="formRepuesto.errors.observacion" class="mt-1.5 text-xs text-red-600">
+                                        {{ formRepuesto.errors.observacion }}
+                                    </p>
+                                </div>
+
+                                <button @click="agregarRepuestoTemporal" :disabled="!repuestoSeleccionado || Number(formRepuesto.cantidad) <= 0 || (formRepuesto.resolver_en_campo && !String(formRepuesto.observacion || '').trim())"
+                                    :class="buttonClass('success', 'lg', 'w-full')">
                                     {{ repuestoTemporalEditandoIndex !== null ? 'Actualizar repuesto' : '+ Agregar Repuesto' }}
                                 </button>
 
@@ -3064,8 +3097,10 @@ const guardarBorrador = () => {
                     <label class="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-900">
                         <input
                             v-model="formRepuesto.resolver_en_campo"
+                            @change="activarResueltoEnCampo"
+                            :disabled="formRepuesto.es_urgente"
                             type="checkbox"
-                            class="mt-0.5 h-4 w-4 rounded border-emerald-300 text-emerald-600 focus:ring-emerald-500"
+                            class="mt-0.5 h-4 w-4 rounded border-emerald-300 text-emerald-600 focus:ring-emerald-500 disabled:cursor-not-allowed disabled:bg-emerald-100"
                         />
                         <span>
                             Marcar como resuelto en campo.
@@ -3075,8 +3110,10 @@ const guardarBorrador = () => {
                     <label class="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-900">
                         <input
                             v-model="formRepuesto.es_urgente"
+                            @change="activarUrgente"
+                            :disabled="formRepuesto.resolver_en_campo"
                             type="checkbox"
-                            class="mt-0.5 h-4 w-4 rounded border-red-300 text-red-600 focus:ring-red-500"
+                            class="mt-0.5 h-4 w-4 rounded border-red-300 text-red-600 focus:ring-red-500 disabled:cursor-not-allowed disabled:bg-red-100"
                         />
                         <span>
                             Marcar como urgente.

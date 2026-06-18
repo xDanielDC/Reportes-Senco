@@ -17,6 +17,17 @@ use Spatie\Permission\Models\Role;
 
 class UserController extends Controller
 {
+    private function hasAdvisorRole($roles): bool
+    {
+        $selectedRoles = collect($roles ?? [])
+            ->map(function ($role) {
+                return mb_strtolower(trim((string) $role));
+            });
+
+        return $selectedRoles->contains('asesor')
+            || $selectedRoles->contains('asesorpruebas');
+    }
+
     /**
      * @return Response
      */
@@ -55,15 +66,11 @@ class UserController extends Controller
                 'cedula' => $request->cedula ?: null,
                 'codigo_vendedor' => $request->codigo_vendedor ?: null,
                 'password' => bcrypt($request->password),
-        ]);
+            ]);
             $user->reports()->sync($request->reports);
             $user->syncRoles($request->roles);
 
-            $selectedRoles = collect($request->roles ?? [])->map(function ($role) {
-                return mb_strtolower(trim($role));
-            });
-
-            if ($selectedRoles->contains('asesor')) {
+            if ($this->hasAdvisorRole($request->roles)) {
                 $technicalUserIds = collect($request->technical_users ?? [])
                     ->map(function ($id) {
                         return (int) $id;
@@ -124,11 +131,7 @@ class UserController extends Controller
             $user->syncPermissions([]);
             $user->syncRoles($request->roles);
 
-            $selectedRoles = collect($request->roles ?? [])->map(function ($role) {
-                return mb_strtolower(trim($role));
-            });
-
-            if ($selectedRoles->contains('asesor')) {
+            if ($this->hasAdvisorRole($request->roles)) {
                 // Solo sincronizar técnicos cuando el payload incluye el campo.
                 if ($request->exists('technical_users')) {
                     $technicalUserIds = collect($request->technical_users ?? [])

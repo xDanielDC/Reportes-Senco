@@ -378,7 +378,8 @@ export default {
             return report
         },
         isAdvisorSelected() {
-            return this.form.roles.some(role => role?.toLowerCase?.() === 'asesor');
+            const advisorRoles = ['asesor', 'asesorpruebas'];
+            return this.form.roles.some(role => advisorRoles.includes(role?.toLowerCase?.()));
         },
         selectedTechnicalUsers() {
             const selectedIds = this.form.technical_users.map((id) => Number(id));

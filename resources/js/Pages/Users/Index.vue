@@ -383,9 +383,11 @@ const rules = {
 
 const v$ = useVuelidate(rules, toRefs(modal));
 
-const isAdvisorSelected = computed(() =>
-    modal.form.roles.some((role) => role?.toLowerCase?.() === 'asesor')
-);
+const isAdvisorSelected = computed(() => {
+    const advisorRoles = ['asesor', 'asesorpruebas'];
+
+    return modal.form.roles.some((role) => advisorRoles.includes(role?.toLowerCase?.()));
+});
 
 const create = () => {
     modal.open = true

@@ -30,6 +30,7 @@ class RutaTecnica extends Model
         'Observaciones',
         'cerrada',
         'fecha_cierre',
+        'invalido',
     ];
 
     protected $casts = [
@@ -38,6 +39,7 @@ class RutaTecnica extends Model
         'FechaVisita' => 'date',
         'cerrada' => 'integer',
         'fecha_cierre' => 'datetime',
+        'invalido' => 'integer',
     ];
 
     /**
@@ -129,6 +131,11 @@ class RutaTecnica extends Model
     public function scopeDelTecnico($query, string $codigoTecnico)
     {
         return $query->where('CodTecnico', $codigoTecnico);
+    }
+
+    public function scopeNoInvalidas($query)
+    {
+        return $query->where('invalido', 0);
     }
 
     /**
