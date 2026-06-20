@@ -17,7 +17,7 @@ const props = defineProps({
 const equiposConDescripcion = ref({})
 const repuestosConDescripcion = ref({})
 
-const obtenerDescripcionRepuesto = async (codigo) => {
+const obtenerDescripcionRepuesto = async (codigo, bodegaParam) => {
     if (!codigo) {
         return {
             descripcion: null,
@@ -31,7 +31,7 @@ const obtenerDescripcionRepuesto = async (codigo) => {
     }
 
     const response = await fetch(
-        `/visitas-tecnicas/senco360/repuestos/descripcion?codigo=${encodeURIComponent(codigo)}`,
+        `/visitas-tecnicas/senco360/repuestos/descripcion?codigo=${encodeURIComponent(codigo)}&bodega=${encodeURIComponent(bodegaParam)}`,
         { credentials: 'include' }
     )
     const data = await response.json()
@@ -75,8 +75,8 @@ const cargarDescripciones = async () => {
         for (const codigo of codigosUnicos) {
             // Skip if already loaded
             if (repuestosConDescripcion.value[codigo]) continue
-
-            await obtenerDescripcionRepuesto(codigo)
+            
+            await obtenerDescripcionRepuesto(codigo, bodega.value)
         }
     } catch (error) {
     }
@@ -96,6 +96,11 @@ const ESTADO_PENDIENTE_REPUESTOS = 6
 const ESTADO_REPUESTO_RECHAZADO = 15
 const ESTADO_REPUESTO_INSTALADO = 19
 const ID_SOLUCION_CAMBIO_REPUESTOS = 4
+
+const bodega = computed(() => {
+    const direccion = (props.visita?.direccion || '').toUpperCase()
+    return direccion.includes('URABA') ? '67' : '03'
+})
 
 const completado = computed(() => {
     return props.visita?.estado === 'Completado'
@@ -171,7 +176,7 @@ const equipoEditandoId   = ref(null)
 const equipoSeleccionado = ref(null)
 const repuestoInstalacion = ref(null)
 const repuestoEditandoId = ref(null)
-const fotoAmpliada = ref(null)
+const equipoObservacionesTemporal = ref('')
 const repuestosTemporal  = ref([])
 const repuestoTemporalEditandoIndex = ref(null)
 const repuestoEditorRef = ref(null)
@@ -183,6 +188,7 @@ const fallasBusqueda = ref('')
 const descripcionOtros = ref('')
 const solucionesDropdownAbierto = ref(false)
 const solucionesBusqueda = ref('')
+const historialColapsado = ref(true)
 
 const beforeExpandEnter = (el) => {
     el.style.height = '0'
@@ -1311,14 +1317,19 @@ const abrirModalEditarRepuesto = async (equipo, repuesto) => {
     formRepuesto.resolver_en_campo = Number(repuesto.estado_id) === ESTADO_REPUESTO_INSTALADO
     formRepuesto.es_urgente = !!repuesto.es_urgente
     let detalleRepuesto = {
-        descripcion: repuestosConDescripcion.value[repuesto.id_cod_max]?.descripcion ?? null,
-        codigo_proveedor: repuestosConDescripcion.value[repuesto.id_cod_max]?.codigo_proveedor ?? null,
-        inventario: repuestosConDescripcion.value[repuesto.id_cod_max]?.inventario ?? null,
+        descripcion: repuestosConDescripcion.value[repuesto.id_cod_max]?.descripcion ?? repuesto.descripcion ?? null,
+        codigo_proveedor: repuestosConDescripcion.value[repuesto.id_cod_max]?.codigo_proveedor ?? repuesto.codigo_proveedor ?? null,
+        inventario: repuestosConDescripcion.value[repuesto.id_cod_max]?.inventario ?? repuesto.inventario ?? null,
     }
 
-    try {
-        detalleRepuesto = await obtenerDescripcionRepuesto(repuesto.id_cod_max)
-    } catch (error) {
+        try {
+            const detalleConsultado = await obtenerDescripcionRepuesto(repuesto.id_cod_max, bodega.value)
+            detalleRepuesto = {
+                descripcion: detalleConsultado.descripcion ?? detalleRepuesto.descripcion,
+                codigo_proveedor: detalleConsultado.codigo_proveedor ?? detalleRepuesto.codigo_proveedor,
+                inventario: detalleConsultado.inventario ?? detalleRepuesto.inventario,
+            }
+        } catch (error) {
     }
 
     repuestoSeleccionado.value = {
@@ -1332,45 +1343,45 @@ const abrirModalEditarRepuesto = async (equipo, repuesto) => {
     modalRepuesto.value = true
 }
 
-const buscarRepuestos = () => {
-    clearTimeout(repuestoTimeout)
+    const buscarRepuestos = () => {
+        clearTimeout(repuestoTimeout)
 
-    const busqueda = String(repuestosBusqueda.value || '').trim()
+        const busqueda = String(repuestosBusqueda.value || '').trim()
 
-    if (repuestoSeleccionado.value && busqueda !== String(repuestoSeleccionado.value.descripcion || '').trim()) {
-        repuestoSeleccionado.value = null
-        formRepuesto.id_cod_max = ''
-    }
-
-    if (busqueda.length < 2) {
-        repuestosResultados.value = []
-        repuestosCargando.value = false
-        repuestosBuscada.value = false
-        return
-    }
-
-    repuestosBuscada.value = true
-    repuestoTimeout = setTimeout(async () => {
-        repuestosCargando.value = true
-        try {
-            const response = await fetch(
-                `/visitas-tecnicas/senco360/repuestos/buscar?q=${encodeURIComponent(busqueda)}`,
-                { credentials: 'include' }
-            )
-            const resultados = await response.json()
-
-            if (busqueda === String(repuestosBusqueda.value || '').trim()) {
-                repuestosResultados.value = resultados
-            }
-        } catch (error) {
-            repuestosResultados.value = []
-        } finally {
-            if (busqueda === String(repuestosBusqueda.value || '').trim()) {
-                repuestosCargando.value = false
-            }
+        if (repuestoSeleccionado.value && busqueda !== String(repuestoSeleccionado.value.descripcion || '').trim()) {
+            repuestoSeleccionado.value = null
+            formRepuesto.id_cod_max = ''
         }
-    }, 300)
-}
+
+        if (busqueda.length < 2) {
+            repuestosResultados.value = []
+            repuestosCargando.value = false
+            repuestosBuscada.value = false
+            return
+        }
+
+        repuestosBuscada.value = true
+        repuestoTimeout = setTimeout(async () => {
+            repuestosCargando.value = true
+            try {
+                const response = await fetch(
+                    `/visitas-tecnicas/senco360/repuestos/buscar?q=${encodeURIComponent(busqueda)}&bodega=${encodeURIComponent(bodega.value)}`,
+                    { credentials: 'include' }
+                )
+                const resultados = await response.json()
+
+                if (busqueda === String(repuestosBusqueda.value || '').trim()) {
+                    repuestosResultados.value = resultados
+                }
+            } catch (error) {
+                repuestosResultados.value = []
+            } finally {
+                if (busqueda === String(repuestosBusqueda.value || '').trim()) {
+                    repuestosCargando.value = false
+                }
+            }
+        }, 300)
+    }
 
 const seleccionarRepuesto = (item) => {
     repuestoSeleccionado.value = item
@@ -1426,6 +1437,11 @@ const claseStock = (inventario) => {
 }
 
 const guardarRepuesto = () => {
+    if (formRepuesto.resolver_en_campo && !String(formRepuesto.observacion || '').trim()) {
+        formRepuesto.setError('observacion', 'La observación es obligatoria cuando se marca como resuelto en campo.')
+        return
+    }
+
     if (repuestoEditandoId.value) {
         formRepuesto.transform((data) => ({
             cantidad: data.cantidad,
@@ -1474,12 +1490,14 @@ const abrirModalSolucionesComplementarias = (equipo) => {
     equipoSeleccionado.value = equipo
     repuestoInstalacion.value = null
     formInstalacion.soluciones_adicionales = []
+    equipoObservacionesTemporal.value = equipo.observaciones ?? ''
     modalSolucionesComplementarias.value = true
 }
 
 const cerrarModalSolucionesComplementarias = () => {
     modalSolucionesComplementarias.value = false
     formInstalacion.soluciones_adicionales = []
+    equipoObservacionesTemporal.value = ''
 }
 
 const agregarFotosDespuesInstalacion = (event) => {
@@ -1529,12 +1547,11 @@ const confirmarInstalacion = async () => {
             })
         }
 
-        // Paso 2: Actualizar estado del repuesto a instalado
-        await axios.put(route('visitastecnicas.repuestos.estado', repuestoInstalacion.value.id), {
-            estado_id: 19,
-            observacion: 'Instalado durante visita técnica',
-            soluciones_adicionales: formInstalacion.soluciones_adicionales,
-        }, {
+// Paso 2: Actualizar estado del repuesto a instalado
+         await axios.put(route('visitastecnicas.repuestos.estado', repuestoInstalacion.value.id), {
+             estado_id: 19,
+             soluciones_adicionales: formInstalacion.soluciones_adicionales,
+         }, {
             headers: {
                 'Accept': 'application/json',
                 'X-Requested-With': 'XMLHttpRequest',
@@ -1595,6 +1612,7 @@ const guardarSolucionesComplementarias = async () => {
 
         await axios.put(route('visitastecnicas.equipos.soluciones-complementarias', equipoSeleccionado.value.id), {
             soluciones_adicionales: formInstalacion.soluciones_adicionales.map(id => Number(id)),
+            observaciones: equipoObservacionesTemporal.value,
         }, {
             headers: {
                 'Accept': 'application/json',
@@ -2055,13 +2073,15 @@ const guardarBorrador = () => {
                                         <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-stone-600">
                                             <span v-if="equipo.serial"><span class="font-medium text-stone-700">Serial:</span> {{ equipo.serial }}</span>
                                             <span v-if="equiposConDescripcion[equipo.id_cod_max]?.codigo_proveedor"><span class="font-medium text-stone-700">Código Comodidad:</span> {{ equiposConDescripcion[equipo.id_cod_max].codigo_proveedor }}</span>
-                                            <span v-if="equipo.tipo_mant || equipo.id_tipo_mant"><span class="font-medium text-stone-700">Tipo mantenimiento:</span> {{ equipo.tipo_mant || equipo.id_tipo_mant }}</span>
                                         </div>
                                         <p v-if="(Array.isArray(equipo.fallas) && equipo.fallas.length) || equipo.descripcion_falla" class="text-[11px] text-stone-600 line-clamp-2">
                                             <span class="font-medium text-stone-700">Fallas:</span> {{ Array.isArray(equipo.fallas) && equipo.fallas.length ? equipo.fallas.map(f => f.descripcion_otros && Number(f.id) === 34 ? f.descripcion_otros : f.descripcion).join(', ') : equipo.descripcion_falla }}
                                         </p>
                                         <p v-if="equipo.tipo_mant" class="text-[11px] text-stone-600">
                                             <span class="font-medium text-stone-700">Tipo mantenimiento:</span> {{ equipo.tipo_mant }}
+                                        </p>
+                                        <p v-if="equipo.observaciones" class="text-[11px] text-stone-600">
+                                            <span class="font-medium text-stone-700">Observaciones:</span> {{ equipo.observaciones }}
                                         </p>
                                     </div>
                                 </div>
@@ -2104,6 +2124,7 @@ const guardarBorrador = () => {
                                 @after-leave="afterExpandLeave">
                                 <div v-if="equipoExpandido === equipo.id" class="overflow-hidden">
                                 <div class="bg-stone-50/70 px-2.5 py-2 space-y-2">
+
                                 <!-- SECCIÓN 2: Repuestos requeridos -->
                                 <div v-if="requiereRepuestos(equipo.soluciones_ids)" class="ml-3 rounded-md border border-stone-200 bg-white overflow-hidden">
                                     <button @click="toggleSeccion(equipo.id, 'repuestos')"
@@ -2141,10 +2162,10 @@ const guardarBorrador = () => {
                                                                 <span v-if="repuesto.es_urgente" class="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700">
                                                                     URGENTE
                                                                 </span>
-                                                                <span v-if="repuestosConDescripcion[repuesto.id_cod_max]?.codigo_proveedor" class="text-stone-500 hidden sm:inline">|</span>
-                                                                <span v-if="repuestosConDescripcion[repuesto.id_cod_max]?.codigo_proveedor" class="text-stone-700 font-medium">Código Comodidad: {{ repuestosConDescripcion[repuesto.id_cod_max].codigo_proveedor }}</span>
+                                                                <span v-if="repuestosConDescripcion[repuesto.id_cod_max]?.codigo_proveedor || repuesto.codigo_proveedor" class="text-stone-500 hidden sm:inline">|</span>
+                                                                <span v-if="repuestosConDescripcion[repuesto.id_cod_max]?.codigo_proveedor || repuesto.codigo_proveedor" class="text-stone-700 font-medium">Código Comodidad: {{ repuestosConDescripcion[repuesto.id_cod_max]?.codigo_proveedor ?? repuesto.codigo_proveedor }}</span>
                                                             </div>
-                                                            <p v-if="repuestosConDescripcion[repuesto.id_cod_max]?.descripcion" class="text-stone-600 mb-1">{{ repuestosConDescripcion[repuesto.id_cod_max].descripcion }}</p>
+                                                            <p v-if="repuestosConDescripcion[repuesto.id_cod_max]?.descripcion || repuesto.descripcion" class="text-stone-600 mb-1">{{ repuestosConDescripcion[repuesto.id_cod_max]?.descripcion ?? repuesto.descripcion }}</p>
                                                             <p class="text-stone-700">Cantidad: <span class="font-semibold">{{ repuesto.cantidad }}</span></p>
                                                             <p v-if="repuesto.observacion" class="mt-1 text-stone-600">
                                                                 <span class="font-medium text-stone-700">Observación:</span> {{ repuesto.observacion }}
@@ -2340,10 +2361,17 @@ const guardarBorrador = () => {
                 </div>
                 <div v-if="historial.length > 0"
                     class="rounded-xl bg-white shadow-sm border border-stone-200 overflow-hidden">
-                    <div class="bg-stone-50 border-b border-stone-200 px-4 py-2.5">
+                    <button type="button"
+                        @click="historialColapsado = !historialColapsado"
+                        class="w-full bg-stone-50 border-b border-stone-200 px-4 py-2.5 flex items-center justify-between hover:bg-stone-100 transition">
                         <h3 class="text-xs font-semibold uppercase tracking-wide text-stone-500">Historial</h3>
-                    </div>
-                    <div class="px-4 py-3">
+                        <svg class="h-4 w-4 text-stone-500 transition-transform"
+                            :class="historialColapsado ? '' : 'rotate-180'"
+                            fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+                        </svg>
+                    </button>
+                    <div v-show="!historialColapsado" class="px-4 py-3">
                         <div class="relative">
                             <!-- Línea vertical -->
                             <div class="absolute left-2 top-2 bottom-2 w-0.5 bg-stone-100"></div>
@@ -2355,7 +2383,12 @@ const guardarBorrador = () => {
                                         :class="historialEstadoColor(item.estado)"></div>
                                     <div class="flex-1 min-w-0">
                                         <div class="flex items-center justify-between gap-2">
-                                            <p class="text-sm font-medium text-stone-900">{{ item.estado }}</p>
+                                            <p class="text-sm font-medium text-stone-900">
+                                                {{ item.estado }}
+                                                <span v-if="item.repuesto" class="text-xs text-stone-500 font-normal">
+                                                    — {{ item.repuesto_descripcion || item.repuesto }}
+                                                </span>
+                                            </p>
                                             <p class="text-xs text-stone-500 shrink-0">{{ item.fecha }}</p>
                                         </div>
                                         <p v-if="item.observaciones" class="text-xs text-stone-500 mt-0.5">
@@ -2848,14 +2881,16 @@ const guardarBorrador = () => {
                                             @click="seleccionarRepuesto(item)"
                                             class="cursor-pointer border-b border-slate-100 px-4 py-2.5 transition hover:bg-slate-50 last:border-b-0">
                                             <div class="flex items-start justify-between gap-3">
-                                                <div class="min-w-0 flex-1">
-                                                    <p class="truncate text-sm font-semibold text-slate-900">{{ item.descripcion }}</p>
-                                                    <div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500">
-                                                        <span>Cod. {{ item.codigo }}</span>
-                                                        <span v-if="item.referencia">Ref. {{ item.referencia }}</span>
-                                                        <span v-if="item.proveedor">Comod. {{ item.proveedor }}</span>
-                                                    </div>
-                                                </div>
+                                         <div class="min-w-0 flex-1">
+                                             <p class="truncate text-sm font-semibold text-slate-900">{{ item.descripcion }}</p>
+                                             <div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500">
+                                                 <span>Cod. {{ item.codigo }}</span>
+                                                 <span v-if="item.referencia">Ref. {{ item.referencia }}</span>
+                                                 <span v-if="item.proveedor">Comod. {{ item.proveedor }}</span>
+                                                 <span v-if="item.bodega">Bodega {{ item.bodega }}</span>
+                                             </div>
+                                         </div>
+                                                
                                                 <div class="shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold" :class="claseStock(item.inventario)">
                                                     {{ textoStock(item.inventario) }}
                                                 </div>
@@ -2866,7 +2901,6 @@ const guardarBorrador = () => {
                                         No hay resultados de tu búsqueda
                                     </div>
                                 </div>
-
                                 <div v-if="repuestoSeleccionado" class="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-xs text-emerald-800">
                                     Inventario disponible: <span class="font-semibold">{{ formatearInventario(repuestoSeleccionado.inventario) }}</span>
                                 </div>
@@ -3069,6 +3103,7 @@ const guardarBorrador = () => {
                                                 <span>Cod. {{ item.codigo }}</span>
                                                 <span v-if="item.referencia">Ref. {{ item.referencia }}</span>
                                                 <span v-if="item.proveedor">Comod. {{ item.proveedor }}</span>
+                                                <span v-if="item.bodega">Bodega {{ item.bodega }}</span>
                                             </div>
                                         </div>
                                         <div class="shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold" :class="claseStock(item.inventario)">
@@ -3089,11 +3124,7 @@ const guardarBorrador = () => {
                         <input v-model.number="formRepuesto.cantidad" type="number" min="1"
                             class="block w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-800 focus:border-[#C8102E] focus:ring-4 focus:ring-red-100" />
                     </div>
-                    <div>
-                        <label class="mb-1.5 block text-xs font-medium text-slate-700">Observacion (opcional)</label>
-                        <textarea v-model="formRepuesto.observacion" rows="2" placeholder="Nota adicional..."
-                            class="block w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-800 focus:border-[#C8102E] focus:ring-4 focus:ring-red-100"></textarea>
-                    </div>
+                    
                     <label class="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-900">
                         <input
                             v-model="formRepuesto.resolver_en_campo"
@@ -3120,6 +3151,18 @@ const guardarBorrador = () => {
                             <span class="block text-red-700">Este repuesto será prioritario.</span>
                         </span>
                     </label>
+                    <div>
+                        <label class="mb-1.5 block text-xs font-medium text-slate-700">
+                            Observacion
+                            <span v-if="formRepuesto.resolver_en_campo" class="text-red-500">*</span>
+                            <span v-else>(opcional)</span>
+                        </label>
+                        <textarea v-model="formRepuesto.observacion" rows="2" placeholder="Nota adicional..."
+                            class="block w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-800 focus:border-[#C8102E] focus:ring-4 focus:ring-red-100"></textarea>
+                        <p v-if="formRepuesto.errors.observacion" class="mt-1.5 text-xs text-red-600">
+                            {{ formRepuesto.errors.observacion }}
+                        </p>
+                    </div>
                 </div>
                 </div>
 
@@ -3129,7 +3172,7 @@ const guardarBorrador = () => {
                         :class="buttonClass('neutral', 'md', 'flex-1')">
                         Cancelar
                     </button>
-                    <button @click="guardarRepuesto" :disabled="formRepuesto.processing || !repuestoSeleccionado"
+                    <button @click="guardarRepuesto" :disabled="formRepuesto.processing || !repuestoSeleccionado || (formRepuesto.resolver_en_campo && !String(formRepuesto.observacion || '').trim())"
                         :class="buttonClass('success', 'md', 'flex-1')">
                         {{ formRepuesto.processing ? 'Guardando...' : (repuestoEditandoId ? 'Actualizar' : 'Agregar') }}
                     </button>
@@ -3408,6 +3451,13 @@ const guardarBorrador = () => {
                         {{ equiposConDescripcion[equipoSeleccionado?.id_cod_max]?.descripcion || equipoSeleccionado?.id_cod_max }}
                     </h3>
                     <p class="mt-1 text-sm text-stone-600">Selecciona las soluciones aplicadas luego de la instalación de los repuestos.</p>
+                </div>
+
+                <div class="mb-4 space-y-1.5 rounded-2xl border border-slate-200 bg-slate-50 p-3.5">
+                    <label class="block text-xs font-medium text-slate-700">Observaciones del equipo</label>
+                    <textarea v-model="equipoObservacionesTemporal" rows="2"
+                        placeholder="Observaciones adicionales..."
+                        class="block w-full resize-none rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-800 focus:border-[#C8102E] focus:ring-4 focus:ring-red-100"></textarea>
                 </div>
 
                 <div v-if="tiposSolucionComplementarios.length" class="rounded-xl border border-emerald-200 bg-emerald-50/60 p-3">

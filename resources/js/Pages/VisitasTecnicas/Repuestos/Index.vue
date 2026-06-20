@@ -189,6 +189,77 @@ const limpiarSeleccionMasiva = () => {
     repuestosSeleccionados.value = []
 }
 
+const popoverObsAbiertoId = ref(null)
+const observacionesData = ref([])
+const cargandoObs = ref(false)
+const botonObsRefs = ref({})
+const posicionPopupObs = ref({ top: '0px', right: '0px' })
+
+const calcularPosicionPopupObs = (repuestoId) => {
+    const btn = botonObsRefs.value[repuestoId]
+    if (!btn) return
+
+    const rect = btn.getBoundingClientRect()
+    const popoverWidth = 320
+
+    let right = window.innerWidth - rect.right
+    let top = rect.top - 8
+
+    posicionPopupObs.value = {
+        top: `${top}px`,
+        right: `${Math.max(8, right)}px`,
+    }
+}
+
+const togglePopupObs = async (repuesto) => {
+    if (popoverObsAbiertoId.value === repuesto.id) {
+        popoverObsAbiertoId.value = null
+        return
+    }
+
+    popoverObsAbiertoId.value = repuesto.id
+    cargandoObs.value = true
+    observacionesData.value = []
+
+    try {
+        const response = await fetch(`/visitas-tecnicas/repuestos/${repuesto.id}/observaciones`, {
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                Accept: 'application/json',
+            },
+        })
+
+        if (!response.ok) {
+            const text = await response.text()
+            console.error('Error observaciones repuesto', repuesto.id, response.status, text)
+            observacionesData.value = []
+            return
+        }
+
+        const data = await response.json()
+        observacionesData.value = Array.isArray(data.observaciones) ? data.observaciones : []
+    } catch (error) {
+        console.error('Error fetch observaciones', error)
+        observacionesData.value = []
+    } finally {
+        cargandoObs.value = false
+    }
+}
+
+const cerrarPopupObs = () => {
+    popoverObsAbiertoId.value = null
+}
+
+const handleClickFueraPopupObs = (event) => {
+    const target = event.target
+    const clickedInsideIcon = target.closest('[data-popover-obs-trigger]')
+    const clickedInsidePopup = target.closest('[data-popover-obs-content]')
+
+    if (!clickedInsideIcon && !clickedInsidePopup) {
+        popoverObsAbiertoId.value = null
+    }
+}
+
 const estaSeleccionado = (repuestoId) => {
     return repuestosSeleccionadosSet.value.has(repuestoId)
 }
@@ -257,7 +328,7 @@ const mostrarErrores = (errors) => {
 const abrirModalEstado = (repuesto) => {
     repuestoActual.value   = repuesto
     nuevoEstadoId.value    = ''
-    nuevaObservacion.value = repuesto.observacion ?? ''
+    nuevaObservacion.value = ''
     modalEstado.value      = true
 }
 
@@ -424,11 +495,13 @@ onMounted(() => {
     actualizarPantalla()
     seleccionarVisitaDesdeQuery()
     window.addEventListener('resize', actualizarPantalla)
+    window.addEventListener('click', handleClickFueraPopupObs)
 })
 
 onBeforeUnmount(() => {
     if (typeof window !== 'undefined') {
         window.removeEventListener('resize', actualizarPantalla)
+        window.removeEventListener('click', handleClickFueraPopupObs)
     }
 })
 </script>
@@ -602,6 +675,59 @@ onBeforeUnmount(() => {
                                                         <span class="rounded-full border px-2.5 py-1 text-xs font-semibold" :class="tonoEstadoFila(r).chip">
                                                             {{ estadoChipLabel(r.estado) }}
                                                         </span>
+                                                        <div class="relative inline-flex">
+                                                            <button
+                                                                :ref="(el) => { if (el) botonObsRefs.value[r.id] = el }"
+                                                                type="button"
+                                                                data-popover-obs-trigger
+                                                                @click.stop="togglePopupObs(r)"
+                                                                class="inline-flex h-8 w-8 items-center justify-center rounded-lg text-stone-500 transition hover:bg-stone-100 hover:text-stone-700"
+                                                            >
+                                                                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                                                                </svg>
+                                                                <span
+                                                                    v-if="r.observacion"
+                                                                    class="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full border-2 border-white bg-blue-500"
+                                                                ></span>
+                                                            </button>
+                                                            <Teleport to="body">
+                                                                <div
+                                                                    v-if="popoverObsAbiertoId === r.id"
+                                                                    data-popover-obs-content
+                                                                    class="fixed z-[9999] mb-2 w-80 rounded-xl border border-stone-200 bg-white p-4 shadow-xl"
+                                                                    :style="{ top: posicionPopupObs.top, right: posicionPopupObs.right }"
+                                                                >
+                                                                <div v-if="cargandoObs" class="py-4 text-center text-sm text-stone-500">
+                                                                    Cargando...
+                                                                </div>
+                                                                <div v-else-if="observacionesData.length === 0" class="py-4 text-center text-sm text-stone-500">
+                                                                    Sin observaciones
+                                                                </div>
+                                                                <div v-else class="max-h-72 space-y-3 overflow-y-auto">
+                                                                    <div
+                                                                        v-for="(obs, idx) in observacionesData"
+                                                                        :key="idx"
+                                                                        class="rounded-lg border border-stone-100 bg-stone-50 p-3"
+                                                                    >
+                                                                        <div class="mb-1 flex items-center justify-between gap-2">
+                                                                            <span class="text-[10px] font-semibold uppercase tracking-wider text-stone-500">
+                                                                                {{ obs.origen === 'Repuesto' ? 'Observación del técnico' : 'Cambio estado' }}
+                                                                            </span>
+                                                                            <span
+                                                                                v-if="obs.estado_id && obs.origen !== 'Repuesto'"
+                                                                                class="rounded-full border px-2 py-0.5 text-[10px] font-semibold"
+                                                                                :class="colorResumenEstado(obs.estado_id)"
+                                                                            >
+                                                                                {{ obs.estado }}
+                                                                            </span>
+                                                                        </div>
+                                                                        <p class="text-xs leading-relaxed text-stone-700">{{ obs.observacion }}</p>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </Teleport>
+                                                    </div>
                                                         <button
                                                             v-if="puedeActualizar(r)"
                                                             type="button"
@@ -730,6 +856,7 @@ onBeforeUnmount(() => {
                                                             <th class="px-2 py-1.5 w-[120px] font-semibold">Codigo Comodidad</th>
                                                             <th class="px-2 py-1.5 w-[120px] font-semibold">Cantidad</th>
                                                             <th class="px-2 py-1.5 font-semibold">Estado</th>
+                                                            <th class="px-2 py-1.5 w-[42px] font-semibold text-center">Obs.</th>
                                                             <th class="px-2 py-1.5 w-[120px] font-semibold text-right">Acción</th>
                                                         </tr>
                                                     </thead>
@@ -762,6 +889,61 @@ onBeforeUnmount(() => {
                                                                 <span class="rounded-full border px-2 py-0.5 text-xs font-semibold" :class="tonoEstadoFila(r).chip">
                                                                     {{ estadoChipLabel(r.estado) }}
                                                                 </span>
+                                                            </td>
+                                                            <td class="px-2 py-2 text-center">
+                                                                <div class="relative inline-flex">
+                                                                    <button
+                                                                        :ref="(el) => { if (el) botonObsRefs.value[r.id] = el }"
+                                                                        type="button"
+                                                                        data-popover-obs-trigger
+                                                                        @click.stop="togglePopupObs(r)"
+                                                                        class="inline-flex h-8 w-8 items-center justify-center rounded-lg text-stone-500 transition hover:bg-stone-100 hover:text-stone-700"
+                                                                    >
+                                                                        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                                            <path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                                                                        </svg>
+                                                                        <span
+                                                                            v-if="r.observacion"
+                                                                            class="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full border-2 border-white bg-blue-500"
+                                                                        ></span>
+                                                                    </button>
+                                                                    <Teleport to="body">
+                                                                        <div
+                                                                            v-if="popoverObsAbiertoId === r.id"
+                                                                            data-popover-obs-content
+                                                                            class="fixed z-[9999] mb-2 w-80 rounded-xl border border-stone-200 bg-white p-4 shadow-xl"
+                                                                            :style="{ top: posicionPopupObs.top, right: posicionPopupObs.right }"
+                                                                        >
+                                                                        <div v-if="cargandoObs" class="py-4 text-center text-sm text-stone-500">
+                                                                            Cargando...
+                                                                        </div>
+                                                                        <div v-else-if="observacionesData.length === 0" class="py-4 text-center text-sm text-stone-500">
+                                                                            Sin observaciones
+                                                                        </div>
+                                                                        <div v-else class="max-h-72 space-y-3 overflow-y-auto">
+                                                                            <div
+                                                                                v-for="(obs, idx) in observacionesData"
+                                                                                :key="idx"
+                                                                                class="rounded-lg border border-stone-100 bg-stone-50 p-3"
+                                                                            >
+                                                                                <div class="mb-1 flex items-center justify-between gap-2">
+                                                                                    <span class="text-[10px] font-semibold uppercase tracking-wider text-stone-500">
+                                                                                        {{ obs.origen === 'Repuesto' ? 'Observación del técnico' : 'Cambio estado' }}
+                                                                                    </span>
+                                                                                    <span
+                                                                                        v-if="obs.estado_id && obs.origen !== 'Repuesto'"
+                                                                                        class="rounded-full border px-2 py-0.5 text-[10px] font-semibold"
+                                                                                        :class="colorResumenEstado(obs.estado_id)"
+                                                                                    >
+                                                                                        {{ obs.estado }}
+                                                                                    </span>
+                                                                                </div>
+                                                                                <p class="text-xs leading-relaxed text-stone-700">{{ obs.observacion }}</p>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                     </Teleport>
+                                                                </div>
                                                             </td>
                                                             <td class="px-2 py-2 text-right w-[120px] align-middle">
                                                                 <div class="flex h-full items-center justify-end">

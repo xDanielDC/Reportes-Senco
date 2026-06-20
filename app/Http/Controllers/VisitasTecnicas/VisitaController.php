@@ -392,7 +392,7 @@ public function store(Request $request): JsonResponse|RedirectResponse
         if ($visitaFinalizada) {
             $this->enviarInformeTecnico(
                 $visitaFinalizada,
-                $this->informeTecnicoService->destinatariosFinalizacion($visitaFinalizada, $user)
+                $this->informeTecnicoService->destinatariosFinalizacion($visitaFinalizada)
             );
         }
 
@@ -448,6 +448,28 @@ public function show(int $id): Response
         strtolower($visita->tipoServicio?->TIPO_SERVICIO ?? ''),
         'capacit'
     );
+
+    $codigosRepuestos = $visita->detalle
+        ->flatMap(fn ($detalle) => $detalle->solicitudesPartes)
+        ->pluck('ID_COD_MAX_PARTES')
+        ->filter()
+        ->unique()
+        ->values()
+        ->all();
+
+    $repuestosInfo = empty($codigosRepuestos)
+        ? collect()
+        : DB::connection('senco360')
+            ->table('vRepuestosMax')
+            ->select([
+                'Codigo Repuesto as codigo',
+                'Descripcion Repuesto as descripcion',
+                'Codigo Proveedor as codigo_proveedor',
+                'Inventario as inventario',
+            ])
+            ->whereIn('Codigo Repuesto', $codigosRepuestos)
+            ->get()
+            ->keyBy(fn ($repuesto) => trim((string) $repuesto->codigo));
 
     return Inertia::render('VisitasTecnicas/Visitas/Show', [
         'visita' => [
@@ -529,15 +551,22 @@ public function show(int $id): Response
                 'id' => $f->ID,
                 'url' => asset('storage/' . $f->RUTA_FOTO)
             ])->values(),
-            'repuestos'        => $e->solicitudesPartes->map(fn($r) => [
-                'id'         => $r->ID,
-                'id_cod_max' => $r->ID_COD_MAX_PARTES,
-                'cantidad'   => $r->CANTIDAD,
-                'estado'     => $r->estado?->ESTADO,
-                'estado_id'  => $r->ID_ESTADO,
-                'observacion'=> $r->OBSERVACION,
-                'es_urgente' => (bool) $r->ES_URGENTE,
-            ]),
+            'repuestos'        => $e->solicitudesPartes->map(function ($r) use ($repuestosInfo) {
+                $infoRepuesto = $repuestosInfo->get(trim((string) $r->ID_COD_MAX_PARTES));
+
+                return [
+                    'id'         => $r->ID,
+                    'id_cod_max' => $r->ID_COD_MAX_PARTES,
+                    'descripcion'=> $infoRepuesto?->descripcion,
+                    'codigo_proveedor' => $infoRepuesto?->codigo_proveedor,
+                    'inventario' => $infoRepuesto?->inventario,
+                    'cantidad'   => $r->CANTIDAD,
+                    'estado'     => $r->estado?->ESTADO,
+                    'estado_id'  => $r->ID_ESTADO,
+                    'observacion'=> $r->OBSERVACION,
+                    'es_urgente' => (bool) $r->ES_URGENTE,
+                ];
+            }),
         ]),
         'tipos_mant'          => TipoMant::orderBy('TIPO_MANT')->get(['ID', 'TIPO_MANT']),
         'tipos_falla'         => TipoFalla::orderBy('DESCRIPCION')->get(['ID', 'DESCRIPCION']),
@@ -550,6 +579,12 @@ public function show(int $id): Response
                 : null,
             'observaciones' => $h->OBSERVACIONES,
             'usuario'       => $h->usuario?->name ?? null,
+            'repuesto'      => filled($h->ID_SOLICITUD_PARTE)
+                ? ($h->solicitudParte?->ID_COD_MAX_PARTES ?? ('Repuesto #' . $h->ID_SOLICITUD_PARTE))
+                : null,
+            'repuesto_descripcion' => filled($h->ID_SOLICITUD_PARTE)
+                ? optional($repuestosInfo->get(trim((string) $h->solicitudParte?->ID_COD_MAX_PARTES)))->descripcion
+                : null,
         ]),
         'historial_repuestos' => $visita->detalle->flatMap(fn($e) =>
             $e->solicitudesPartes->map(fn($r) => [
@@ -686,7 +721,7 @@ public function show(int $id): Response
             if ($visitaFinalizada) {
                 $this->enviarInformeTecnico(
                     $visitaFinalizada,
-                    $this->informeTecnicoService->destinatariosFinalizacion($visitaFinalizada, auth()->user())
+                    $this->informeTecnicoService->destinatariosFinalizacion($visitaFinalizada)
                 );
             }
         }
@@ -869,22 +904,19 @@ public function show(int $id): Response
                     ->filter()
                     ->values();
 
-                $repuestosInfo = [];
+                $repuestosInfo = collect();
                 if ($repuestos->isNotEmpty()) {
                     $codigos = $repuestos->pluck('id_cod_max')->unique()->values()->all();
                     $repuestosInfo = DB::connection('senco360')
                         ->table('vRepuestosMax')
+                        ->select([
+                            'Codigo Repuesto as codigo',
+                            'Descripcion Repuesto as descripcion',
+                            'Codigo Proveedor as codigo_proveedor',
+                        ])
                         ->whereIn('Codigo Repuesto', $codigos)
                         ->get()
-                        ->keyBy('Codigo Repuesto')
-                        ->map(function ($row) {
-                            return [
-                                'id_cod_max' => $row->{'Codigo Repuesto'},
-                                'codigo_comodidad' => $row->{'Codigo Proveedor'} ?? null,
-                                'nombre' => $row->{'Descripcion Repuesto'} ?? null,
-                            ];
-                        })
-                        ->toArray();
+                        ->keyBy(fn ($row) => trim((string) $row->codigo));
                 }
 
                 // Obtener observaciones desde las solicitudes de partes (SolicitudParte)
@@ -897,13 +929,13 @@ public function show(int $id): Response
                 }
 
                 $repuestosFinal = $repuestos->map(function ($repuesto) use ($repuestosInfo, $solicitudesMap) {
-                    $info = $repuestosInfo[$repuesto['id_cod_max']] ?? null;
+                    $info = $repuestosInfo->get(trim((string) $repuesto['id_cod_max']));
                     $observacion = $solicitudesMap[$repuesto['detalle_id']]->OBSERVACION ?? null;
 
                     return [
                         'codigo_max' => $repuesto['id_cod_max'],
-                        'codigo_comodidad' => $info['codigo_comodidad'] ?? null,
-                        'nombre' => $info['nombre'] ?? null,
+                        'codigo_comodidad' => $info?->codigo_proveedor,
+                        'nombre' => $info?->descripcion,
                         'cantidad' => $repuesto['cantidad'],
                         'observacion' => $observacion,
                     ];

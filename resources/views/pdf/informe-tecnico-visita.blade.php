@@ -128,18 +128,25 @@
                         <div class="equipment-detail"><span class="solution-label">Tipo mantenimiento:</span> {{ $equipo['tipo_mant'] ?: '—' }}</div>
                         <div class="equipment-detail"><span class="solution-label">Fallas:</span> {{ $equipo['falla'] ?: '—' }}</div>
 
-                        @if($equipo['soluciones']->isNotEmpty())
-                            <div class="solution">
-                                <span class="solution-label">Tipo solución:</span>
-                                <ul class="solution-list">
-                                    @foreach($equipo['soluciones'] as $solucion)
-                                        <li><span class="check">&#10003;</span> {{ $solucion }}</li>
-                                    @endforeach
-                                </ul>
-                            </div>
-                        @else
-                            <div class="solution"><span class="solution-label">Tipo solución:</span> <span class="empty">Sin soluciones registradas.</span></div>
-                        @endif
+@if($equipo['soluciones']->isNotEmpty())
+                             <div class="solution">
+                                 <span class="solution-label">Tipo solución:</span>
+                                 <ul class="solution-list">
+                                     @foreach($equipo['soluciones'] as $solucion)
+                                         <li><span class="check">&#10003;</span> {{ $solucion }}</li>
+                                     @endforeach
+                                 </ul>
+                             </div>
+                         @else
+                             <div class="solution"><span class="solution-label">Tipo solución:</span> <span class="empty">Sin soluciones registradas.</span></div>
+                         @endif
+
+                         @if(!empty($equipo['observaciones']))
+                             <div class="solution">
+                                 <span class="solution-label">Observaciones:</span>
+                                 {{ $equipo['observaciones'] }}
+                             </div>
+                         @endif
 
                         @if($equipo['repuestos']->isNotEmpty())
                             <div class="photos-title">Repuestos instalados</div>

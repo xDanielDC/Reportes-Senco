@@ -19,8 +19,9 @@ class NotificacionRepuestoSolicitado extends Mailable
     public $visita;
     public $asesor;
     public $asistenteDestinatario;
+    public $tecnico;
 
-    public function __construct(array $repuestos, string $url, ?string $solicitante = null, $visita = null, $asesor = null, $asistenteDestinatario = null)
+    public function __construct(array $repuestos, string $url, ?string $solicitante = null, $visita = null, $asesor = null, $asistenteDestinatario = null, $tecnico = null)
     {
         $this->repuestos = $repuestos;
         $this->url = $url;
@@ -28,6 +29,7 @@ class NotificacionRepuestoSolicitado extends Mailable
         $this->visita = $visita;
         $this->asesor = $asesor;
         $this->asistenteDestinatario = $asistenteDestinatario;
+        $this->tecnico = $tecnico;
     }
 
     public function envelope(): Envelope

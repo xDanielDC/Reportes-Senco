@@ -39,6 +39,20 @@ class InformeTecnicoVisitaService
             ->first();
     }
 
+    public function obtenerAsesorVisita(VisitaEncab $visita): ?User
+    {
+        $codigoVendedor = trim((string) $visita->rutaTecnica?->CodVendedor);
+
+        if ($codigoVendedor === '') {
+            return null;
+        }
+
+        return User::whereRaw('LTRIM(RTRIM(codigo_vendedor)) = ?', [$codigoVendedor])
+            ->orWhere('cedula', $codigoVendedor)
+            ->orWhere('username', $codigoVendedor)
+            ->first();
+    }
+
     public function nombreTecnico(VisitaEncab $visita): ?string
     {
         $tecnico = $this->obtenerTecnicoAsignado($visita);
@@ -55,14 +69,15 @@ class InformeTecnicoVisitaService
         );
     }
 
-    public function destinatariosFinalizacion(VisitaEncab $visita, ?User $usuarioFinaliza = null): array
+    public function destinatariosFinalizacion(VisitaEncab $visita): array
     {
         $tecnico = $this->obtenerTecnicoAsignado($visita);
+        $asesor = $this->obtenerAsesorVisita($visita);
 
         return collect([
             $visita->CORREO,
-            $usuarioFinaliza?->email,
             $tecnico?->email,
+            $asesor?->email,
             self::CORREO_FIJO_INFORME,
         ])
             ->filter(fn ($email) => filled($email) && filter_var($email, FILTER_VALIDATE_EMAIL))

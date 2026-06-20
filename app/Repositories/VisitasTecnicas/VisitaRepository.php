@@ -44,6 +44,7 @@ class VisitaRepository
             'detalle.fotos',
             'historialEstados.estado',
             'historialEstados.usuario',
+            'historialEstados.solicitudParte',
         ])->where('ID', $id);
 
         if (!empty($codigoTecnico)) {

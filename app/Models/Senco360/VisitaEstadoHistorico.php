@@ -11,7 +11,7 @@ class VisitaEstadoHistorico extends Model
     protected $primaryKey = 'ID';
     public $timestamps = false;
     protected $fillable = [
-        'ID_ENC_VISITA', 'ID_ESTADO', 'FECHA', 'OBSERVACIONES', 'ID_USUARIO'
+        'ID_ENC_VISITA', 'ID_ESTADO', 'FECHA', 'OBSERVACIONES', 'ID_USUARIO', 'ID_SOLICITUD_PARTE'
     ];
 
     public function estado()
@@ -22,6 +22,11 @@ class VisitaEstadoHistorico extends Model
     public function usuario()
     {
         return $this->belongsTo(\App\Models\User::class, 'ID_USUARIO', 'id');
+    }
+
+    public function solicitudParte()
+    {
+        return $this->belongsTo(SolicitudParte::class, 'ID_SOLICITUD_PARTE', 'ID');
     }
 
     // Normaliza FECHA a un formato que SQL Server interpreta

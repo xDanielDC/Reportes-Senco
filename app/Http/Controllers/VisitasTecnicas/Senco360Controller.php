@@ -48,12 +48,13 @@ class Senco360Controller extends Controller
     public function buscarRepuestos(Request $request)
     {
         $busqueda = $request->input('q', '');
+        $bodega = $request->input('bodega', '');
 
         if (strlen($busqueda) < 2) {
             return response()->json([]);
         }
 
-        $resultados = DB::connection('senco360')
+        $query = DB::connection('senco360')
             ->table('vRepuestosMax')
             ->select([
                 'Codigo Repuesto as codigo',
@@ -61,7 +62,15 @@ class Senco360Controller extends Controller
                 'Referencia as referencia',
                 'Codigo Proveedor as proveedor',
                 'Inventario as inventario',
-            ])
+                'Bodega as bodega',
+            ]);
+
+        // Filtrar por bodega si se proporciona
+        if (!empty($bodega)) {
+            $query->where('Bodega', $bodega);
+        }
+
+        $resultados = $query
             ->where(function ($query) use ($busqueda) {
                 $query->where('Codigo Repuesto', 'like', "%{$busqueda}%")
                     ->orWhere('Descripcion Repuesto', 'like', "%{$busqueda}%")
@@ -104,17 +113,24 @@ class Senco360Controller extends Controller
     public function obtenerDescripcionRepuesto(Request $request)
     {
         $codigo = $request->input('codigo', '');
+        $bodega = $request->input('bodega', '');
         
         if (empty($codigo)) {
             return response()->json(['descripcion' => null, 'codigo_proveedor' => null, 'inventario' => null]);
         }
-
-        $resultado = DB::connection('senco360')
+        
+        $query = DB::connection('senco360')
             ->table('vRepuestosMax')
             ->select('Descripcion Repuesto as descripcion', 'Codigo Proveedor as codigo_proveedor', 'Inventario as inventario')
-            ->where('Codigo Repuesto', $codigo)
-            ->first();
-
+            ->where('Codigo Repuesto', $codigo);
+        
+        // Filtrar por bodega si se proporciona
+        if (!empty($bodega)) {
+            $query->where('Bodega', $bodega);
+        }
+        
+        $resultado = $query->first();
+        
         return response()->json([
             'descripcion' => $resultado?->descripcion,
             'codigo_proveedor' => $resultado?->codigo_proveedor,

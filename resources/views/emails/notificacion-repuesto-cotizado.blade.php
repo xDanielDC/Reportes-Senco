@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Repuesto solicitado</title>
+    <title>Cotización lista</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
 
@@ -190,8 +190,8 @@
             <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
                 <tr>
                     <td class="hero-content" valign="top">
-                        <p class="hero-eyebrow">Notificación de repuestos</p>
-                        <h1 class="hero-title">Repuesto solicitado - Visita <span class="visit-num">#{{ $visita->ID ?? 'N/A' }}</span></h1>
+                        <p class="hero-eyebrow">Notificación de cotización</p>
+                        <h1 class="hero-title">Repuesto cotizado - Visita <span class="visit-num">#{{ $visita->ID ?? 'N/A' }}</span></h1>
                     </td>
                     <td class="hero-logo" valign="top" align="right" width="92">
                         <img src="{{ $message->embed(public_path('images/logo-black.png')) }}" alt="SENCO" width="78" style="width: 78px; max-width: 78px; height: auto; display: block;" />
@@ -202,7 +202,7 @@
 
         <div class="card">
             <p class="greeting">
-                Se ha solicitado un repuesto y ahora está pendiente de gestión. Accede al registro directamente desde el botón para revisar los detalles.
+                Hola <strong>{{ $tecnico->name ?? 'Técnico' }}</strong>.<br> La cotización del repuesto ha sido generada y está lista para su revisión.
             </p>
 
             @if(!empty($visita))
@@ -217,18 +217,12 @@
                     </tr>
                     <tr class="meta-row">
                         <td class="meta-label">Asesor</td>
-                        <td class="meta-value">{{ $solicitante ?? '—' }}</td>
+                        <td class="meta-value">{{ optional($visita->rutaTecnica)->CodVendedor ?? '—' }}</td>
                     </tr>
-                    @if(!empty($tecnico) && !empty($tecnico->name))
-                        <tr class="meta-row">
-                            <td class="meta-label">Técnico</td>
-                            <td class="meta-value">{{ $tecnico->name }}</td>
-                        </tr>
-                    @endif
                 </table>
             @endif
 
-            <h2 class="section-heading">Repuestos solicitados</h2>
+            <h2 class="section-heading">Repuestos cotizados</h2>
 
             <table class="parts-table">
                 <colgroup>
@@ -258,7 +252,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="5" class="empty-state">No hay repuestos asociados.</td>
+                            <td colspan="5" style="text-align: center; padding: 24px; background: #FAFAFA; color: #999; font-size: 14px;">No hay repuestos asociados.</td>
                         </tr>
                     @endforelse
                 </tbody>

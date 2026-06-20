@@ -244,6 +244,7 @@ class EquipoController extends Controller
         $request->validate([
             'soluciones_adicionales'   => 'required|array|min:1',
             'soluciones_adicionales.*' => 'required|integer|exists:senco360.RT_tipo_solucion,ID',
+            'observaciones'            => 'nullable|string|max:1000',
         ]);
 
         $equipo = VisitaDetal::with('encabezado.rutaTecnica')->findOrFail($id);
@@ -255,12 +256,18 @@ class EquipoController extends Controller
             ->unique()
             ->values();
 
-        DB::connection('senco360')->transaction(function () use ($equipo, $solucionesAdicionales) {
+        DB::connection('senco360')->transaction(function () use ($equipo, $solucionesAdicionales, $request) {
             $equipo->tiposSolucion()->syncWithoutDetaching($solucionesAdicionales->all());
 
             if (!$equipo->ID_SOLUCION) {
                 $equipo->update([
                     'ID_SOLUCION' => $solucionesAdicionales->first(),
+                ]);
+            }
+
+            if ($request->has('observaciones')) {
+                $equipo->update([
+                    'OBSERVACIONES' => $request->observaciones,
                 ]);
             }
         });

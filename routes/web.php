@@ -280,6 +280,8 @@ Route::middleware(['auth:sanctum', config('jetstream.auth_session'), 'verified']
         ->name('repuestos.estado.masivo');
     Route::put('/repuestos/{id}/estado', [\App\Http\Controllers\VisitasTecnicas\RepuestoGestionController::class, 'actualizarEstado'])
         ->name('repuestos.estado');
+    Route::get('/repuestos/{id}/observaciones', [\App\Http\Controllers\VisitasTecnicas\RepuestoGestionController::class, 'obtenerObservacionesRepuesto'])
+        ->name('repuestos.observaciones');
     Route::post('/fotos', [\App\Http\Controllers\VisitasTecnicas\FotoController::class, 'store'])
         ->name('fotos.store');
     Route::delete('/fotos/{id}', [\App\Http\Controllers\VisitasTecnicas\FotoController::class, 'destroy'])

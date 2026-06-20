@@ -72,7 +72,7 @@ const cargarDirecciones = async (clienteId) => {
     }
 };
 
-// Función para seleccionar dirección - INCLUYE CIUDAD EN DIRECCIÓN COMPLETA
+// Función para seleccionar dirección - INCLUYE CIUDAD, DEPARTAMENTO Y SEDE EN DIRECCIÓN COMPLETA
 const seleccionar = (direccion) => {
     direccionSeleccionada.value = direccion.DireccionId;
     
@@ -82,12 +82,14 @@ const seleccionar = (direccion) => {
     // Agregar ciudad y departamento al final
     if (direccion.Ciudad || direccion.Departamento) {
         direccionCompleta += ' - ';
-        if (direccion.Ciudad) {
-            direccionCompleta += direccion.Ciudad;
-        }
+        if (direccion.Ciudad) direccionCompleta += direccion.Ciudad;
         if (direccion.Departamento) {
             direccionCompleta += direccion.Ciudad ? ', ' + direccion.Departamento : direccion.Departamento;
         }
+    }
+    // Agregar sede al final
+    if (direccion.Sede) {
+        direccionCompleta += ' - ' + direccion.Sede;
     }
     
     // Emitir con la dirección completa mejorada
