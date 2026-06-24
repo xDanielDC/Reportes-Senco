@@ -157,6 +157,7 @@
                                         <th>Cód. Max</th>
                                         <th>Cantidad</th>
                                         <th>Estado</th>
+                                        <th>Observ.</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -166,6 +167,7 @@
                                             <td>{{ $repuesto['codigo_max'] }}</td>
                                             <td>{{ $repuesto['cantidad'] }}</td>
                                             <td>{{ $repuesto['estado'] }}</td>
+                                            <td>{{ $repuesto['observaciones'] ?? '—' }}</td>
                                         </tr>
                                     @endforeach
                                 </tbody>

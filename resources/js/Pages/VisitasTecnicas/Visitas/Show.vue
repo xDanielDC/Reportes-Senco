@@ -99,7 +99,11 @@ const ID_SOLUCION_CAMBIO_REPUESTOS = 4
 
 const bodega = computed(() => {
     const direccion = (props.visita?.direccion || '').toUpperCase()
-    return direccion.includes('URABA') ? '67' : '03'
+    const palabrasBodega67 = ['URABA', 'CHIGORODO', 'CAREPA', 'APARTADO', 'TURBO', 'RIOGRANDE', 'NECOCLI', 'ARBOLETES', 'MUTATA']
+
+    const usaBodega67 = palabrasBodega67.some(palabra => direccion.includes(palabra.toUpperCase()))
+
+    return usaBodega67 ? '67' : '03'
 })
 
 const completado = computed(() => {
@@ -406,6 +410,7 @@ const formReenviarInforme = useForm({
 const formInstalacion = useForm({
     fotos_despues: [],
     soluciones_adicionales: [],
+    observacion_instalacion: '',
 })
 
 const mostrarAlertaFinalizacion = ref(false)
@@ -1483,6 +1488,7 @@ const abrirModalInstalacion = (equipo, repuesto) => {
     fotosDespuesInstalacion.value = []
     formInstalacion.fotos_despues = []
     formInstalacion.soluciones_adicionales = []
+    formInstalacion.observacion_instalacion = repuesto?.observacion_instalacion ?? ''
     modalInstalacion.value = true
 }
 
@@ -1550,6 +1556,7 @@ const confirmarInstalacion = async () => {
 // Paso 2: Actualizar estado del repuesto a instalado
          await axios.put(route('visitastecnicas.repuestos.estado', repuestoInstalacion.value.id), {
              estado_id: 19,
+             observacion: formInstalacion.observacion_instalacion,
              soluciones_adicionales: formInstalacion.soluciones_adicionales,
          }, {
             headers: {
@@ -1564,6 +1571,7 @@ const confirmarInstalacion = async () => {
         fotosDespuesInstalacion.value = []
         formInstalacion.fotos_despues = []
         formInstalacion.soluciones_adicionales = []
+        formInstalacion.observacion_instalacion = ''
         
         // Paso 4: Recargar datos necesarios sin navegar manualmente
         router.reload({
@@ -3400,6 +3408,17 @@ const guardarBorrador = () => {
                             <p class="text-xs text-stone-600 mt-1">Cantidad: {{ repuestoInstalacion?.cantidad }}</p>
                         </div>
                     </div>
+                </div>
+
+                <!-- Observaciones -->
+                <div class="mb-4">
+                    <label class="block text-xs font-semibold text-stone-700 mb-2">Observaciones de la instalación</label>
+                    <textarea
+                        v-model="formInstalacion.observacion_instalacion"
+                        rows="3"
+                        placeholder="Observación sobre la instalación del repuesto..."
+                        class="block w-full rounded-lg border-stone-300 text-sm focus:border-[#C8102E] focus:ring-red-100"
+                    ></textarea>
                 </div>
 
                 <!-- Evidencia Final -->

@@ -4,6 +4,7 @@ namespace App\Services\VisitasTecnicas;
 
 use App\Models\Senco360\SolicitudParte;
 use App\Models\Senco360\VisitaEncab;
+use App\Models\Senco360\VisitaEstadoHistorico;
 use App\Models\User;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Collection;
@@ -98,6 +99,7 @@ class InformeTecnicoVisitaService
             'detalle.tiposFalla',
             'detalle.tipoMant',
             'detalle.solicitudesPartes.estado',
+            'detalle.solicitudesPartes.historialEstados.estado',
             'detalle.fotos',
         ]);
 
@@ -182,6 +184,13 @@ class InformeTecnicoVisitaService
                                 'cantidad' => $repuesto->CANTIDAD,
                                 'estado' => $repuesto->estado?->ESTADO ?? 'Sin estado',
                                 'es_urgente' => (bool) $repuesto->ES_URGENTE,
+                                'observaciones' => VisitaEstadoHistorico::query()
+                                    ->where('ID_SOLICITUD_PARTE', $repuesto->ID)
+                                    ->where('ID_ESTADO', $repuesto->ID_ESTADO)
+                                    ->whereNotNull('OBSERVACIONES')
+                                    ->where('OBSERVACIONES', '<>', '')
+                                    ->orderBy('FECHA', 'desc')
+                                    ->value('OBSERVACIONES') ?: null,
                             ];
                         })
                         ->values(),

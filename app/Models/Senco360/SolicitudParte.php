@@ -24,4 +24,9 @@ class SolicitudParte extends Model
     {
         return $this->belongsTo(VisitaEstado::class, 'ID_ESTADO', 'ID');
     }
+
+    public function historialEstados()
+    {
+        return $this->hasMany(VisitaEstadoHistorico::class, 'ID_SOLICITUD_PARTE', 'ID');
+    }
 }

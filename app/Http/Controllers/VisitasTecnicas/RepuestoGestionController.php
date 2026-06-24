@@ -1,24 +1,25 @@
 <?php
+
 namespace App\Http\Controllers\VisitasTecnicas;
 
 use App\Http\Controllers\Controller;
-use App\Mail\NotificacionRepuestoSolicitado;
 use App\Mail\NotificacionRechazoCotizacion;
-use App\Mail\NotificacionRepuestoEnEspera;
-use App\Mail\NotificacionRepuestoDespachado;
 use App\Mail\NotificacionRepuestoCotizado;
+use App\Mail\NotificacionRepuestoDespachado;
+use App\Mail\NotificacionRepuestoEnEspera;
+use App\Mail\NotificacionRepuestoSolicitado;
 use App\Models\Senco360\SolicitudParte;
 use App\Models\Senco360\VisitaDetal;
 use App\Models\Senco360\VisitaEstado;
 use App\Models\Senco360\VisitaEstadoHistorico;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Facades\Log;
+use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -135,7 +136,7 @@ class RepuestoGestionController extends Controller
         $estadoActualId = (int) $repuesto->ID_ESTADO;
         $estadosGestionables = $this->obtenerEstadosGestionablesPorRol($user);
 
-        if (!in_array($estadoActualId, $estadosGestionables, true)) {
+        if (! in_array($estadoActualId, $estadosGestionables, true)) {
             throw ValidationException::withMessages([
                 'estado_id' => 'El estado actual del repuesto no es gestionable para tu rol.',
             ]);
@@ -143,7 +144,7 @@ class RepuestoGestionController extends Controller
 
         $destinosValidos = $this->obtenerEstadosDestinoValidos($estadoActualId, $user);
 
-        if (!in_array($estadoDestinoId, $destinosValidos, true)) {
+        if (! in_array($estadoDestinoId, $destinosValidos, true)) {
             throw ValidationException::withMessages([
                 'estado_id' => 'La transición de estado solicitada no es válida.',
             ]);
@@ -165,11 +166,11 @@ class RepuestoGestionController extends Controller
 
         if ($idEncVisita) {
             VisitaEstadoHistorico::create([
-                'ID_ENC_VISITA'     => $idEncVisita,
-                'ID_ESTADO'         => $estadoDestinoId,
-                'FECHA'             => now(),
-                'OBSERVACIONES'     => filled($observacion) ? $observacion : null,
-                'ID_USUARIO'         => auth()->id(),
+                'ID_ENC_VISITA' => $idEncVisita,
+                'ID_ESTADO' => $estadoDestinoId,
+                'FECHA' => now(),
+                'OBSERVACIONES' => filled($observacion) ? $observacion : null,
+                'ID_USUARIO' => auth()->id(),
                 'ID_SOLICITUD_PARTE' => $repuesto->ID,
             ]);
         }
@@ -190,27 +191,27 @@ class RepuestoGestionController extends Controller
 
         $equipo = VisitaDetal::find($repuesto->ID_DETALLE_VISITA);
 
-        if (!$equipo) {
+        if (! $equipo) {
             return;
         }
 
         $equipo->tiposSolucion()->syncWithoutDetaching($soluciones->all());
 
-        if (!$equipo->ID_SOLUCION) {
+        if (! $equipo->ID_SOLUCION) {
             $equipo->update([
                 'ID_SOLUCION' => $soluciones->first(),
             ]);
         }
     }
 
-    private function enviarNotificacionRepuestoSolicitado(int $estadoDestinoId, Collection $repuestos): void
+    private function enviarNotificacionRepuestoSolicitado(int $estadoDestinoId, Collection $repuestos, ?string $observacionCambio = null): void
     {
         if ($estadoDestinoId !== 14 || $repuestos->isEmpty()) {
             return;
         }
 
         $visitaEncabezado = $repuestos->first()->detalle?->encabezado;
-        if (!$visitaEncabezado) {
+        if (! $visitaEncabezado) {
             return;
         }
 
@@ -224,7 +225,11 @@ class RepuestoGestionController extends Controller
             'visita_id' => (int) $visitaEncabezado->ID,
         ]);
 
-        $repuestosParaEmail = $this->formatearRepuestosParaEmail($repuestos);
+        $observacionSolicitado = filled($observacionCambio) ? $observacionCambio : null;
+        $repuestosParaEmail = collect($this->formatearRepuestosParaEmail($repuestos))
+            ->map(fn (array $repuesto) => array_merge($repuesto, ['observacion' => $observacionSolicitado]))
+            ->values()
+            ->all();
 
         $asistentes = User::role('AsistenteVentas')
             ->whereNotNull('email')
@@ -293,7 +298,7 @@ class RepuestoGestionController extends Controller
     {
         $codigoTecnico = $visitaEncabezado->rutaTecnica?->CodTecnico;
 
-        if (!$codigoTecnico) {
+        if (! $codigoTecnico) {
             return null;
         }
 
@@ -307,33 +312,36 @@ class RepuestoGestionController extends Controller
     {
         $codigoVendedor = $visitaEncabezado->rutaTecnica?->CodVendedor;
 
-        if (!$codigoVendedor) {
+        if (! $codigoVendedor) {
             return null;
         }
 
         return User::whereRaw('LTRIM(RTRIM(codigo_vendedor)) = ?', [$codigoVendedor])->first();
     }
 
-    private function enviarNotificacionRechazoCotizacion(Collection $repuestos): void
+    private function enviarNotificacionRechazoCotizacion(Collection $repuestos, ?string $observacionCambio = null): void
     {
         if ($repuestos->isEmpty()) {
             Log::info('No hay repuestos para notificar rechazo cotización');
+
             return;
         }
 
         $visitaEncabezado = $repuestos->first()->detalle?->encabezado;
-        if (!$visitaEncabezado) {
+        if (! $visitaEncabezado) {
             Log::info('No se encontró encabezado de visita para notificación rechazo cotización');
+
             return;
         }
 
         $codigoTecnico = $visitaEncabezado->rutaTecnica?->CodTecnico;
-        Log::info('Código técnico obtenido: ' . $codigoTecnico);
+        Log::info('Código técnico obtenido: '.$codigoTecnico);
         $tecnico = $this->obtenerTecnicoAsignado($visitaEncabezado);
-        Log::info('Técnico encontrado: ' . ($tecnico ? $tecnico->name . ' - ' . $tecnico->email : 'No encontrado'));
+        Log::info('Técnico encontrado: '.($tecnico ? $tecnico->name.' - '.$tecnico->email : 'No encontrado'));
 
-        if (!$tecnico || !$tecnico->email) {
+        if (! $tecnico || ! $tecnico->email) {
             Log::info('Técnico no encontrado o sin email para notificación rechazo cotización');
+
             return;
         }
 
@@ -343,9 +351,13 @@ class RepuestoGestionController extends Controller
             'id' => (int) $visitaEncabezado->ID,
         ]);
 
-        $repuestosParaEmail = $this->formatearRepuestosParaEmail($repuestos);
+        $observacionRechazo = filled($observacionCambio) ? $observacionCambio : null;
+        $repuestosParaEmail = collect($this->formatearRepuestosParaEmail($repuestos))
+            ->map(fn (array $repuesto) => array_merge($repuesto, ['observacion' => $observacionRechazo]))
+            ->values()
+            ->all();
 
-        Log::info('Enviando notificación de rechazo cotización a: ' . $tecnico->email);
+        Log::info('Enviando notificación de rechazo cotización a: '.$tecnico->email);
         Mail::to($tecnico->email)
             ->send(new NotificacionRechazoCotizacion(
                 $visitaEncabezado,
@@ -357,16 +369,18 @@ class RepuestoGestionController extends Controller
         Log::info('Notificación de rechazo cotización enviada exitosamente');
     }
 
-    private function enviarNotificacionRepuestoEnEspera(Collection $repuestos): void
+    private function enviarNotificacionRepuestoEnEspera(Collection $repuestos, ?string $observacionCambio = null): void
     {
         if ($repuestos->isEmpty()) {
             Log::info('No hay repuestos para notificar repuesto en espera');
+
             return;
         }
 
         $visitaEncabezado = $repuestos->first()->detalle?->encabezado;
-        if (!$visitaEncabezado) {
+        if (! $visitaEncabezado) {
             Log::info('No se encontró encabezado de visita para notificación repuesto en espera');
+
             return;
         }
 
@@ -382,7 +396,12 @@ class RepuestoGestionController extends Controller
             'id' => (int) $visitaEncabezado->ID,
         ]);
 
-        $repuestosParaEmail = $this->formatearRepuestosParaEmail($repuestos);
+        $observacionEspera = filled($observacionCambio) ? $observacionCambio : null;
+        $repuestosParaEmail = collect($this->formatearRepuestosParaEmail($repuestos))
+            ->map(fn (array $repuesto) => array_merge($repuesto, ['observacion' => $observacionEspera]))
+            ->values()
+            ->all();
+
         $asesorLocal = $this->obtenerAsesorVisita($visitaEncabezado);
 
         $destinatarios = collect([$tecnico, $asesorLocal])
@@ -392,11 +411,12 @@ class RepuestoGestionController extends Controller
 
         if ($destinatarios->isEmpty()) {
             Log::info('Técnico y asesor no encontrados o sin email para notificación repuesto en espera');
+
             return;
         }
 
         foreach ($destinatarios as $destinatario) {
-            Log::info('Enviando notificación de repuesto en espera a: ' . $destinatario->email);
+            Log::info('Enviando notificación de repuesto en espera a: '.$destinatario->email);
             Mail::to($destinatario->email)
                 ->send(new NotificacionRepuestoEnEspera(
                     $visitaEncabezado,
@@ -409,22 +429,25 @@ class RepuestoGestionController extends Controller
         Log::info('Notificación de repuesto en espera enviada exitosamente');
     }
 
-    private function enviarNotificacionRepuestoCotizado(Collection $repuestos): void
+    private function enviarNotificacionRepuestoCotizado(Collection $repuestos, ?string $observacionCambio = null): void
     {
         if ($repuestos->isEmpty()) {
             Log::info('No hay repuestos para notificar repuesto cotizado');
+
             return;
         }
 
         $visitaEncabezado = $repuestos->first()->detalle?->encabezado;
-        if (!$visitaEncabezado) {
+        if (! $visitaEncabezado) {
             Log::info('No se encontró encabezado de visita para notificación repuesto cotizado');
+
             return;
         }
 
         $tecnico = $this->obtenerTecnicoAsignado($visitaEncabezado);
-        if (!$tecnico || !$tecnico->email) {
+        if (! $tecnico || ! $tecnico->email) {
             Log::info('Técnico no encontrado o sin email para notificación repuesto cotizado');
+
             return;
         }
 
@@ -432,9 +455,13 @@ class RepuestoGestionController extends Controller
             'id' => (int) $visitaEncabezado->ID,
         ]);
 
-        $repuestosParaEmail = $this->formatearRepuestosParaEmail($repuestos);
+        $observacionCotizado = filled($observacionCambio) ? $observacionCambio : null;
+        $repuestosParaEmail = collect($this->formatearRepuestosParaEmail($repuestos))
+            ->map(fn (array $repuesto) => array_merge($repuesto, ['observacion' => $observacionCotizado]))
+            ->values()
+            ->all();
 
-        Log::info('Enviando notificación de repuesto cotizado a: ' . $tecnico->email);
+        Log::info('Enviando notificación de repuesto cotizado a: '.$tecnico->email);
         Mail::to($tecnico->email)
             ->send(new NotificacionRepuestoCotizado(
                 $visitaEncabezado,
@@ -449,12 +476,14 @@ class RepuestoGestionController extends Controller
     {
         if ($repuestos->isEmpty()) {
             Log::info('No hay repuestos para notificar repuesto despachado');
+
             return;
         }
 
         $visitaEncabezado = $repuestos->first()->detalle?->encabezado;
-        if (!$visitaEncabezado) {
+        if (! $visitaEncabezado) {
             Log::info('No se encontró encabezado de visita para notificación repuesto despachado');
+
             return;
         }
 
@@ -468,6 +497,7 @@ class RepuestoGestionController extends Controller
 
         if ($destinatarios->isEmpty()) {
             Log::info('Asesor y técnico no encontrados o sin email para notificación repuesto despachado');
+
             return;
         }
 
@@ -482,7 +512,7 @@ class RepuestoGestionController extends Controller
             ->all();
 
         foreach ($destinatarios as $destinatario) {
-            Log::info('Enviando notificación de repuesto despachado a: ' . $destinatario->email);
+            Log::info('Enviando notificación de repuesto despachado a: '.$destinatario->email);
             Mail::to($destinatario->email)
                 ->send(new NotificacionRepuestoDespachado(
                     $visitaEncabezado,
@@ -504,11 +534,11 @@ class RepuestoGestionController extends Controller
         }
 
         match ($estadoDestinoId) {
-            14 => $this->enviarNotificacionRepuestoSolicitado(14, $repuestos),
-            15 => $this->enviarNotificacionRechazoCotizacion($repuestos),
-            17 => $this->enviarNotificacionRepuestoEnEspera($repuestos),
+            14 => $this->enviarNotificacionRepuestoSolicitado(14, $repuestos, $observacionCambio),
+            15 => $this->enviarNotificacionRechazoCotizacion($repuestos, $observacionCambio),
+            17 => $this->enviarNotificacionRepuestoEnEspera($repuestos, $observacionCambio),
             18 => $this->enviarNotificacionRepuestoDespachado($repuestos, $observacionCambio),
-            27 => $this->enviarNotificacionRepuestoCotizado($repuestos),
+            27 => $this->enviarNotificacionRepuestoCotizado($repuestos, $observacionCambio),
             default => null,
         };
     }
@@ -516,7 +546,7 @@ class RepuestoGestionController extends Controller
     public function index(): Response
     {
         $user = auth()->user();
-        $esAsesor    = $user->hasAnyRole(['Asesor', 'AsesorPruebas']);
+        $esAsesor = $user->hasAnyRole(['Asesor', 'AsesorPruebas']);
         $esAsistente = $user->hasRole('AsistenteVentas');
         $estadosGestionables = $this->obtenerEstadosGestionablesPorRol($user);
 
@@ -529,7 +559,7 @@ class RepuestoGestionController extends Controller
 
         $this->aplicarAlcanceVisibilidad($query, $user);
 
-        if (!empty($estadosGestionables)) {
+        if (! empty($estadosGestionables)) {
             $query->whereIn('ID_ESTADO', $estadosGestionables);
         }
 
@@ -580,22 +610,22 @@ class RepuestoGestionController extends Controller
             $herramientaInfo = $herramientasInfo->get(trim((string) ($r->detalle?->ID_COD_MAX ?? '')));
 
             return [
-                'id'              => $r->ID,
-                'codigo'          => $r->ID_COD_MAX_PARTES,
+                'id' => $r->ID,
+                'codigo' => $r->ID_COD_MAX_PARTES,
                 'nombre_repuesto' => $repuestoInfo?->descripcion,
-                'proveedor'       => $repuestoInfo?->codigo_proveedor,
-                'es_urgente'      => (bool) $r->ES_URGENTE,
-                'cantidad'        => $r->CANTIDAD,
-                'observacion'     => $r->OBSERVACION,
-                'estado'          => $r->estado?->ESTADO,
-                'estado_id'       => $r->ID_ESTADO,
-                'cliente'         => $r->detalle?->encabezado?->rutaTecnica?->NombreCliente,
-                'nit'             => $r->detalle?->encabezado?->rutaTecnica?->Nit,
-                'direccion'       => $r->detalle?->encabezado?->rutaTecnica?->DireccionCompleta,
-                'tecnico'         => $r->detalle?->encabezado?->rutaTecnica?->CodTecnico,
-                'visita_id'       => $r->detalle?->encabezado?->ID,
-                'equipo'          => $r->detalle?->ID_COD_MAX,
-                'nombre_equipo'   => $herramientaInfo ? $herramientaInfo->descripcion : null,
+                'proveedor' => $repuestoInfo?->codigo_proveedor,
+                'es_urgente' => (bool) $r->ES_URGENTE,
+                'cantidad' => $r->CANTIDAD,
+                'observacion' => $r->OBSERVACION,
+                'estado' => $r->estado?->ESTADO,
+                'estado_id' => $r->ID_ESTADO,
+                'cliente' => $r->detalle?->encabezado?->rutaTecnica?->NombreCliente,
+                'nit' => $r->detalle?->encabezado?->rutaTecnica?->Nit,
+                'direccion' => $r->detalle?->encabezado?->rutaTecnica?->DireccionCompleta,
+                'tecnico' => $r->detalle?->encabezado?->rutaTecnica?->CodTecnico,
+                'visita_id' => $r->detalle?->encabezado?->ID,
+                'equipo' => $r->detalle?->ID_COD_MAX,
+                'nombre_equipo' => $herramientaInfo ? $herramientaInfo->descripcion : null,
             ];
         });
 
@@ -608,21 +638,21 @@ class RepuestoGestionController extends Controller
                 ->get(['ID', 'ESTADO']);
 
         return Inertia::render('VisitasTecnicas/Repuestos/Index', [
-            'repuestos'          => $repuestos,
-            'estados_disponibles'=> $estadosDisponibles,
-            'transiciones_estado'=> $this->obtenerTransicionesPorRol($user),
-            'es_asesor'          => $esAsesor,
-            'es_asistente'       => $esAsistente,
+            'repuestos' => $repuestos,
+            'estados_disponibles' => $estadosDisponibles,
+            'transiciones_estado' => $this->obtenerTransicionesPorRol($user),
+            'es_asesor' => $esAsesor,
+            'es_asistente' => $esAsistente,
         ]);
     }
 
     public function actualizarEstado(Request $request, int $id): JsonResponse|RedirectResponse
     {
         $request->validate([
-            'estado_id'                 => 'required|integer|in:13,14,15,16,17,18,19,27',
-            'observacion'               => 'nullable|string|max:255',
-            'soluciones_adicionales'    => 'nullable|array',
-            'soluciones_adicionales.*'  => 'integer|exists:senco360.RT_tipo_solucion,ID',
+            'estado_id' => 'required|integer|in:13,14,15,16,17,18,19,27',
+            'observacion' => 'nullable|string|max:255',
+            'soluciones_adicionales' => 'nullable|array',
+            'soluciones_adicionales.*' => 'integer|exists:senco360.RT_tipo_solucion,ID',
         ]);
 
         $repuestoParaNotificar = null;
@@ -678,11 +708,11 @@ class RepuestoGestionController extends Controller
 
         if (filled($repuesto->OBSERVACION)) {
             $observaciones->push((object) [
-                'fecha'       => null,
+                'fecha' => null,
                 'observacion' => $repuesto->OBSERVACION,
-                'origen'      => 'Repuesto',
-                'estado'      => $repuesto->estado?->ESTADO,
-                'estado_id'   => (int) $repuesto->ID_ESTADO,
+                'origen' => 'Repuesto',
+                'estado' => $repuesto->estado?->ESTADO,
+                'estado_id' => (int) $repuesto->ID_ESTADO,
             ]);
         }
 
@@ -698,12 +728,12 @@ class RepuestoGestionController extends Controller
                 ->get(['ID_ESTADO', 'FECHA', 'OBSERVACIONES', 'ID_USUARIO'])
                 ->map(function ($h) {
                     return (object) [
-                        'fecha'       => $h->FECHA,
+                        'fecha' => $h->FECHA,
                         'observacion' => $h->OBSERVACIONES,
-                        'origen'      => 'Histórico',
-                        'estado'      => $h->estado?->ESTADO,
-                        'estado_id'   => (int) $h->ID_ESTADO,
-                        'usuario'     => $h->usuario?->name,
+                        'origen' => 'Histórico',
+                        'estado' => $h->estado?->ESTADO,
+                        'estado_id' => (int) $h->ID_ESTADO,
+                        'usuario' => $h->usuario?->name,
                     ];
                 })
                 ->values();
@@ -719,10 +749,10 @@ class RepuestoGestionController extends Controller
     public function actualizarEstadoMasivo(Request $request): JsonResponse|RedirectResponse
     {
         $request->validate([
-            'repuesto_ids'    => 'required|array|min:1',
-            'repuesto_ids.*'  => 'integer|distinct',
-            'estado_id'       => 'required|integer|in:13,14,15,16,17,18,19,27',
-            'observacion'     => 'nullable|string|max:255',
+            'repuesto_ids' => 'required|array|min:1',
+            'repuesto_ids.*' => 'integer|distinct',
+            'estado_id' => 'required|integer|in:13,14,15,16,17,18,19,27',
+            'observacion' => 'nullable|string|max:255',
         ]);
 
         $repuestosParaNotificar = collect();
