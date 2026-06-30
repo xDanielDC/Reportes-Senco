@@ -22,6 +22,7 @@ class VisitasTecnicasPermissionsSeeder extends Seeder
             'visitastecnicas.repuestos.ver',
             'visitastecnicas.repuestos.ver-todos',
             'visitastecnicas.repuestos.gestiona',
+            'capacitaciones.crear',
         ];
 
         // Permisos de Rutas Técnicas
