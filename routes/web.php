@@ -293,6 +293,12 @@ Route::middleware(['auth:sanctum', config('jetstream.auth_session'), 'verified']
     Route::prefix('capacitaciones')->name('capacitaciones.')->group(function () {
         Route::get('/', [\App\Http\Controllers\VisitasTecnicas\CapacitacionAsesorController::class, 'index'])
             ->name('index');
+        Route::get('/libre/create', [\App\Http\Controllers\VisitasTecnicas\CapacitacionAsesorController::class, 'createLibre'])
+            ->name('create-libre')
+            ->middleware('permission:capacitaciones.crear');
+        Route::post('/libre', [\App\Http\Controllers\VisitasTecnicas\CapacitacionAsesorController::class, 'storeLibre'])
+            ->name('store-libre')
+            ->middleware('permission:capacitaciones.crear');
         Route::get('/{id_visita}', [\App\Http\Controllers\VisitasTecnicas\CapacitacionAsesorController::class, 'show'])
             ->name('show');
         Route::get('/{id_visita}/edit', [\App\Http\Controllers\VisitasTecnicas\CapacitacionAsesorController::class, 'edit'])

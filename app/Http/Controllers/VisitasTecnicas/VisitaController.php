@@ -231,6 +231,8 @@ class VisitaController extends Controller
             'estados_visita' => VisitaEstado::where('descripcion', 'Visita')
                 ->where('ID', '!=', 28)
                 ->get(['ID', 'ESTADO']),
+            'puedeCrearCapacitacionLibre' => $user->permission_names->contains('capacitaciones.crear'),
+            'esCapacitacionModulo' => false,
         ]);
     }
 

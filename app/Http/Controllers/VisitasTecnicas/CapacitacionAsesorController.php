@@ -4,14 +4,18 @@ namespace App\Http\Controllers\VisitasTecnicas;
 
 use App\Http\Controllers\Controller;
 use App\Models\RutaTecnica;
+use App\Models\Senco360\TipoServicio;
+use App\Models\Senco360\VisitaDetal;
 use App\Models\Senco360\VisitaEncab;
 use App\Models\Senco360\VisitaEstado;
 use App\Models\Senco360\VisitaEstadoHistorico;
+use App\Models\Senco360\VisitaFoto;
 use App\Repositories\VisitasTecnicas\VisitaRepository;
 use App\Services\VisitasTecnicas\InformeTecnicoVisitaService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Carbon\Carbon;
 
@@ -26,6 +30,188 @@ class CapacitacionAsesorController extends Controller
         protected InformeTecnicoVisitaService $informeTecnicoService
     ) {
         $this->middleware('permission:rutas-tecnicas.crear');
+    }
+
+    /**
+     * Renderizar formulario para registrar una capacitación libre.
+     */
+    public function createLibre()
+    {
+        $codigoAsesor = $this->codigoAsesor();
+        abort_if(!$codigoAsesor, 403, 'Tu usuario no tiene un código de asesor asignado.');
+
+        $tipoCapacitacion = TipoServicio::whereRaw("LOWER(TIPO_SERVICIO) LIKE '%capacit%'")
+            ->orderBy('TIPO_SERVICIO')
+            ->first();
+
+        abort_if(!$tipoCapacitacion, 500, 'No se encontró un tipo de servicio de capacitación configurado.');
+
+        return Inertia::render('VisitasTecnicas/Capacitaciones/CreateLibre', [
+            'tipo_capacitacion_id' => $tipoCapacitacion->ID,
+        ]);
+    }
+
+    /**
+     * Guardar una capacitación libre: crea ruta técnica mínima, visita encab,
+     * detalle, firma, fotos, historial e informe. Finaliza de una vez.
+     */
+    public function storeLibre(Request $request)
+    {
+        $codigoAsesor = $this->codigoAsesor();
+        abort_if(!$codigoAsesor, 403, 'Tu usuario no tiene un código de asesor asignado.');
+
+        $tipoCapacitacion = TipoServicio::whereRaw("LOWER(TIPO_SERVICIO) LIKE '%capacit%'")
+            ->orderBy('TIPO_SERVICIO')
+            ->first();
+
+        abort_if(!$tipoCapacitacion, 500, 'No se encontró un tipo de servicio de capacitación configurado.');
+
+        $request->validate([
+            'nit'              => 'required|string|max:50',
+            'nombre_cliente'   => 'required|string|max:255',
+            'direccion'        => 'required|string|max:500',
+            'nom_contacto'     => 'nullable|string|max:255',
+            'tel_contacto'     => 'nullable|string|max:50',
+            'fecha_visita'     => 'required|date',
+            'correo_cliente'   => 'nullable|email',
+            'titulo'           => 'required|string|max:200',
+            'temas'            => 'nullable|string|max:1000',
+            'observaciones'    => 'nullable|string|max:1000',
+            'fecha_inicio'     => 'required|date',
+            'fecha_fin'        => 'required|date|after_or_equal:fecha_inicio',
+            'hora_inicio'      => 'required|date_format:H:i',
+            'hora_fin'         => 'required|date_format:H:i',
+            'firma'            => 'nullable|string',
+            'fotos'            => 'nullable|array',
+            'fotos.*'          => 'nullable|image|max:5120',
+        ]);
+
+        DB::beginTransaction();
+
+        try {
+            $user = auth()->user();
+            $fechaHoy = now()->format('Y-m-d');
+            $numeroRuta = RutaTecnica::generarNumeroRuta();
+
+            // 1. Crear ruta técnica mínima
+            $ruta = RutaTecnica::create([
+                'NumeroRuta'        => $numeroRuta,
+                'FechaInicio'       => $fechaHoy,
+                'FechaFin'          => $fechaHoy,
+                'Nit'               => $request->nit,
+                'NombreCliente'     => $request->nombre_cliente,
+                'DireccionCompleta' => $request->direccion,
+                'FechaVisita'       => $request->fecha_visita,
+                'NomContacto'       => $request->nom_contacto,
+                'TelContacto'       => $request->tel_contacto,
+                'CodVendedor'       => $codigoAsesor,
+                'CodTecnico'        => $codigoAsesor,
+                'Observaciones'     => null,
+                'cerrada'           => 1,
+            ]);
+
+            // 2. Crear visita encab en estado Completado
+            $visita = $this->repo->crear([
+                'ID_VISITA'        => $ruta->IdVisita,
+                'CORREO'           => $request->correo_cliente,
+                'HORA_INICIO'      => $request->hora_inicio,
+                'HORA_FIN'         => $request->hora_fin,
+                'FECHA_INICIO'     => $request->fecha_inicio,
+                'FECHA_FIN'        => $request->fecha_fin,
+                'ID_TIPO_SERVICIO' => $tipoCapacitacion->ID,
+                'OBSERVACIONES'    => null,
+                'ID_ESTADO_ACTUAL' => self::ESTADO_COMPLETADO,
+            ]);
+
+            // 3. Crear detalle de capacitación
+            $detal = VisitaDetal::create([
+                'ID_ENC_VISITA'     => $visita->ID,
+                'ID_COD_MAX'        => 'CAP',
+                'TITULO'            => $request->titulo,
+                'DESCRIPCION_FALLA' => $request->temas,
+                'ID_SOLUCION'       => null,
+                'OBSERVACIONES'     => $request->observaciones,
+            ]);
+
+            // 4. Guardar firma
+            if ($request->filled('firma')) {
+                $firmaBase64 = $request->firma;
+                if (str_contains($firmaBase64, ',')) {
+                    $firmaBase64 = explode(',', $firmaBase64)[1];
+                }
+                $firmaBlob = base64_decode($firmaBase64);
+                $rutaFirma = 'visitas/firmas/' . $visita->ID . '_firma.png';
+                Storage::disk('public')->put($rutaFirma, $firmaBlob);
+                VisitaFoto::create([
+                    'ID_DETALLE_VISITA' => $detal->ID,
+                    'TIPO'              => 'FIRMA',
+                    'RUTA_FOTO'         => $rutaFirma,
+                ]);
+            }
+
+            // 5. Guardar fotos
+            if ($request->hasFile('fotos')) {
+                foreach ($request->file('fotos') as $foto) {
+                    $rutaFoto = $foto->store('visitas/equipos/' . $detal->ID, 'public');
+                    VisitaFoto::create([
+                        'ID_DETALLE_VISITA' => $detal->ID,
+                        'TIPO'              => 'DESPUES',
+                        'RUTA_FOTO'         => $rutaFoto,
+                    ]);
+                }
+            }
+
+            // 6. Historial
+            VisitaEstadoHistorico::create([
+                'ID_ENC_VISITA' => $visita->ID,
+                'ID_ESTADO'     => self::ESTADO_COMPLETADO,
+                'FECHA'         => now(),
+                'OBSERVACIONES' => $request->observaciones ?? 'Capacitación libre finalizada por asesor',
+                'ID_USUARIO'    => $user->id,
+            ]);
+
+            // 7. Enviar informe
+            $visitaFinalizada = $this->repo->findById($visita->ID, '');
+            if ($visitaFinalizada) {
+                $destinatarios = collect([
+                    $visitaFinalizada->CORREO,
+                    $user->email,
+                    $this->informeTecnicoService::CORREO_FIJO_INFORME,
+                ])
+                    ->filter(fn ($email) => filled($email) && filter_var($email, FILTER_VALIDATE_EMAIL))
+                    ->map(fn ($email) => strtolower(trim($email)))
+                    ->unique()
+                    ->values()
+                    ->all();
+
+                if (!empty($destinatarios)) {
+                    $pdfContenido = $this->informeTecnicoService->generarPdf($visitaFinalizada)->output();
+                    $nombreArchivo = $this->informeTecnicoService->nombreArchivo($visitaFinalizada);
+
+                    foreach ($destinatarios as $email) {
+                        \Illuminate\Support\Facades\Mail::to($email)->send(
+                            new \App\Mail\InformeTecnicoVisitaMail($visitaFinalizada, $pdfContenido, $nombreArchivo)
+                        );
+                    }
+                }
+            }
+
+            DB::commit();
+
+            return response()->json([
+                'success'  => true,
+                'message'  => 'Capacitación registrada y finalizada correctamente.',
+                'redirect' => route('visitastecnicas.capacitaciones.index'),
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Error al registrar capacitación libre', ['error' => $e->getMessage()]);
+
+            return response()->json([
+                'success' => false,
+                'error'   => $e->getMessage(),
+            ], 500);
+        }
     }
 
     /**
@@ -56,6 +242,7 @@ class CapacitacionAsesorController extends Controller
         return Inertia::render('VisitasTecnicas/Visitas/Index', [
             'visitas' => $capacitaciones,
             'esCapacitacionModulo' => true,
+            'puedeCrearCapacitacionLibre' => $user->permission_names->contains('capacitaciones.crear'),
             'titulo' => 'Mis Capacitaciones',
         ]);
     }
@@ -174,7 +361,14 @@ class CapacitacionAsesorController extends Controller
                 ->toArray();
 
             if (!empty($destinatarios)) {
-                $this->informeTecnicoService->generarYEnviarInforme($visita, $destinatarios);
+                $pdfContenido = $this->informeTecnicoService->generarPdf($visita)->output();
+                $nombreArchivo = $this->informeTecnicoService->nombreArchivo($visita);
+
+                foreach ($destinatarios as $email) {
+                    \Illuminate\Support\Facades\Mail::to($email)->send(
+                        new \App\Mail\InformeTecnicoVisitaMail($visita, $pdfContenido, $nombreArchivo)
+                    );
+                }
             }
 
             DB::commit();

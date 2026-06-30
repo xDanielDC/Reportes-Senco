@@ -7,6 +7,8 @@ const props = defineProps({
     visitas:        { type: Array,  default: () => [] },
     filtros:        { type: Object, default: () => ({}) },
     estados_visita: { type: Array,  default: () => [] },
+    esCapacitacionModulo: { type: Boolean, default: false },
+    puedeCrearCapacitacionLibre: { type: Boolean, default: false },
 })
 
 const buscar = ref(props.filtros.buscar ?? '')
@@ -109,11 +111,24 @@ function formatearFechaNatural(fecha) {
 <template>
     <AppLayout title="Visitas Técnicas">
         <Head title="Visitas Técnicas" />
-
         <template #header>
-            <h2 class="text-xl font-semibold leading-tight text-gray-800">
-                Mis Visitas Técnicas
-            </h2>
+            <div class="flex justify-between items-center">
+                <h2 class="font-semibold text-xl text-gray-800 leading-tight">
+                    Mis Visitas Técnicas
+                </h2>
+                
+                <!-- Botón Crear - Solo si tiene permiso -->
+                <Link
+                v-if="puedeCrearCapacitacionLibre || esCapacitacionModulo"
+                :href="route('visitastecnicas.capacitaciones.create-libre')"
+                class="ml-2 inline-flex items-center px-4 py-2 border border-transparent rounded-md font-semibold text-xs text-white uppercase tracking-widest hover:bg-indigo-700 bg-blue-600 active:bg-indigo-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition ease-in-out duration-150"
+            >
+                <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                </svg>
+                Registrar Capacitación
+            </Link>
+            </div>
         </template>
 
         <div class="py-2 sm:py-4">

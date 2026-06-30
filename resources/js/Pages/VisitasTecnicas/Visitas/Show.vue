@@ -132,9 +132,12 @@ const tieneRepuestosPendientes = computed(() => {
     return false
 })
 
-// Finalizar solo habilitado si no tiene repuestos pendientes
+const tieneEquipos = computed(() => {
+    return (props.equipos || []).length > 0
+})
+
 const puedeFinalizar = computed(() => {
-    return props.visita?.puede_finalizar && !tieneRepuestosPendientes.value
+    return props.visita?.puede_finalizar && !tieneRepuestosPendientes.value && tieneEquipos.value
 })
 
 const puedeSolicitarCotizacion = computed(() => {
@@ -980,6 +983,10 @@ const camposFaltantesFinalizacion = computed(() => {
 
     if (!formFinalizar.hora_fin) {
         faltantes.push('Hora fin')
+    }
+
+    if (!tieneEquipos.value) {
+        faltantes.push('Agregar al menos un equipo')
     }
 
     return faltantes

@@ -585,9 +585,6 @@ const cerrarNotificacion = () => {
                                     >
                                         {{ tecnico.name }} | Cod: {{ tecnico.codigo_vendedor || 'N/A' }}
                                     </option>
-                                    <option value="yo-capacitacion">
-                                        Yo (capacitación) | Cod: {{ page.props.auth?.user?.codigo_vendedor || 'N/A' }}
-                                    </option>
                                 </select>
 
                                 <div v-if="tecnicoSeleccionadoActual" class="mt-3 rounded-md border border-indigo-200 bg-indigo-50 p-3">

@@ -537,9 +537,6 @@ onMounted(() => {
                                 class="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
                             >
                                 <option :value="null" disabled>Seleccione un técnico...</option>
-                                <option value="yo-capacitacion">
-                                    Yo (capacitación) | Cod: {{ page.props.auth?.user?.codigo_vendedor || 'N/A' }}
-                                </option>
                                 <option
                                     v-for="tecnico in tecnicosAsociados"
                                     :key="tecnico.id"
